@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>Centro de Control Unificado - Dashboard</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Monarca">
+    <link rel="apple-touch-icon" href="icon-192.png">
 
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -116,6 +122,7 @@
     <button class="nav-tab" data-page="descansos">⏱️ Descansos</button>
     <button class="nav-tab" data-page="flota">🛻 Flota</button>
     <button class="nav-tab" data-page="ordenes">📋 Ordenes</button>
+    <button class="nav-tab" data-page="incidentes">🚨 Incidentes</button>
 </nav>
 
 <!-- VISTA CHOFER -->
@@ -152,9 +159,19 @@
         </div>
     </div>
     <div class="card">
+        <div class="section-title">🚨 Reportar incidente</div>
+        <textarea class="form-input" id="cvIncidenteMsg" rows="3" placeholder="Describí el problema (vehículo, dirección, cliente, etc.)"></textarea>
+        <button class="btn btn-danger" id="btnEnviarIncidente" style="margin-top:8px;">🚨 Enviar reporte</button>
+    </div>
+    <div class="card">
         <div class="section-title">📊 Mi historial reciente</div>
         <div id="choferVistaHistorial"></div>
     </div>
+</div>
+
+<!-- INCIDENTES -->
+<div class="page" id="page-incidentes">
+    <div class="card"><div class="section-title">🚨 Incidentes reportados</div><div id="listaIncidentes"></div></div>
 </div>
 
 <!-- DASHBOARD -->
@@ -177,7 +194,7 @@
 
     <div class="subpage active" id="subpage-log-turno">
         <div class="card">
-            <div class="section-title">Turno Activo <button class="btn btn-sm btn-outline" id="btnEditarFranjas">✏️ Editar franjas</button></div>
+            <div class="section-title">Turno Activo <button class="btn btn-sm btn-outline" id="btnEditarFranjas">✏️ Editar franjas</button> <button class="btn btn-sm btn-danger" id="btnLimpiarTurno">🧹 Limpiar turno</button></div>
             <div id="franjaEditor" style="display:none; margin-top:12px; background:var(--surface2); border-radius:12px; padding:14px;">
                 <div id="franjaEditorLista" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -258,6 +275,13 @@
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+<div id="incidenteBanner" style="display:none; position:fixed; top:0; left:0; right:0; background:var(--danger); color:#fff; padding:14px 20px; z-index:10000; font-weight:600; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span id="incidenteBannerTexto"></span>
+    <div style="display:flex; gap:8px;">
+        <button class="btn btn-sm btn-outline" style="border-color:#fff;color:#fff;" id="btnVerIncidentes">Ver todos</button>
+        <button class="btn btn-sm btn-outline" style="border-color:#fff;color:#fff;" id="btnCerrarBannerIncidente">✕</button>
+    </div>
+</div>
 
 <script>
 
@@ -277,13 +301,85 @@
     let herrOpciones = JSON.parse(localStorage.getItem('lg_flota_herr_opts') || '["✅ Tiene todo","🔧 Solo crique","⚠️ Le falta algo","❌ Sin herramientas","📋 No revisado"]');
     let estadosOrdenOpciones = JSON.parse(localStorage.getItem('lg_ordenes_estados') || '["⏳ Pendiente","📦 Preparando","🚚 En reparto","✅ Entregado","❌ Cancelado"]');
     let ordenesData = [];
+    let incidentesData = []; let incidentesVistos = JSON.parse(localStorage.getItem('lg_incidentes_vistos')||'[]'); let incidentesPrimeraCarga = true;
+    let rankingExclusiones = JSON.parse(localStorage.getItem('lg_ranking_exclusiones')||'[]');
+    let rankingAjustes = JSON.parse(localStorage.getItem('lg_ranking_ajustes')||'{}');
+    let rankingEditando = null;
+    function guardarConfigRanking(){
+        if (firestoreReady) db.collection('config').doc('ranking').set({ exclusiones: rankingExclusiones, ajustes: rankingAjustes });
+        else { localStorage.setItem('lg_ranking_exclusiones', JSON.stringify(rankingExclusiones)); localStorage.setItem('lg_ranking_ajustes', JSON.stringify(rankingAjustes)); }
+    }
     let viajesChart, rankingChart, flotaChart;
 
     // ---------- UTILIDADES ----------
     function toast(msg, type='info'){ let d=document.createElement('div'); d.className=`toast ${type}`; d.textContent=msg; document.getElementById('toastContainer').appendChild(d); setTimeout(()=>d.remove(),3000); }
+
+    function reproducirAlerta(){
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            [0, 0.25, 0.5].forEach(delay => {
+                const osc = ctx.createOscillator(), gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'square'; osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.15, ctx.currentTime + delay);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.2);
+                osc.start(ctx.currentTime + delay);
+                osc.stop(ctx.currentTime + delay + 0.2);
+            });
+        } catch(e) { console.warn('No se pudo reproducir sonido', e); }
+    }
+
+    window.enviarIncidente = () => {
+        if (!currentUser || currentUser.role !== 'chofer' || !choferDetalle) return;
+        const msg = document.getElementById('cvIncidenteMsg').value.trim();
+        if (!msg) return toast('Escribí una descripción del problema', 'error');
+        const data = { chofer: choferDetalle, mensaje: msg, fecha: hoy(), hora: new Date().toTimeString().slice(0,5), leido: false };
+        if (firestoreReady) db.collection('incidentes').add(data).then(() => toast('Reporte enviado ✅', 'success'));
+        else {
+            data.id = Date.now().toString();
+            incidentesData.unshift(data);
+            localStorage.setItem('lg_incidentes', JSON.stringify(incidentesData));
+            toast('Reporte enviado ✅', 'success');
+            mostrarBannerIncidentes();
+        }
+        document.getElementById('cvIncidenteMsg').value = '';
+    };
+
+    function mostrarBannerIncidentes(){
+        if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'operator')) return;
+        const noLeidos = incidentesData.filter(i => !incidentesVistos.includes(i.id));
+        const banner = document.getElementById('incidenteBanner');
+        if (!noLeidos.length) { banner.style.display = 'none'; return; }
+        reproducirAlerta();
+        const ultimo = noLeidos[0];
+        document.getElementById('incidenteBannerTexto').textContent = `🚨 ${ultimo.chofer} (${ultimo.hora}): ${ultimo.mensaje}` + (noLeidos.length > 1 ? ` (+${noLeidos.length - 1} más)` : '');
+        banner.style.display = 'flex';
+    }
+
+    function renderIncidentes(){
+        const el = document.getElementById('listaIncidentes');
+        if (!el) return;
+        if (!incidentesData.length) { el.innerHTML = '<div class="empty-state">Sin incidentes reportados.</div>'; return; }
+        el.innerHTML = [...incidentesData].map(i => `
+            <div class="card" style="margin-bottom:8px; ${incidentesVistos.includes(i.id) ? 'opacity:0.6;' : 'border-left:3px solid var(--danger);'}">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <strong>🚨 ${i.chofer}</strong>
+                    <span style="font-size:0.75rem;color:var(--text-muted);">${i.fecha} ${i.hora}</span>
+                </div>
+                <div style="margin-top:6px;">${i.mensaje}</div>
+                ${!incidentesVistos.includes(i.id) ? `<button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="marcarIncidenteVisto('${i.id}')">✓ Marcar como visto</button>` : '<div style="margin-top:6px;font-size:0.7rem;color:var(--text-muted);">Visto</div>'}
+            </div>`).join('');
+    }
+
+    window.marcarIncidenteVisto = (id) => {
+        if (!incidentesVistos.includes(id)) incidentesVistos.push(id);
+        localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos));
+        renderIncidentes();
+        mostrarBannerIncidentes();
+    };
     function formatMinutos(min){ if(min===undefined) return '—'; if(min<60) return `${min} min`; let h=Math.floor(min/60), m=min%60; return m?`${h}h ${m}min`:`${h}h`; }
     function hoy(){ return new Date().toLocaleDateString('es-AR'); }
-    function guardarEnFirestore(coleccion, id, datos){ if(firestoreReady) db.collection(coleccion).doc(id).set(datos,{merge:true}); }
+    function guardarEnFirestore(coleccion, id, datos, merge=true){ if(firestoreReady) db.collection(coleccion).doc(id).set(datos, merge?{merge:true}:{}); }
 
     // ---------- AUTENTICACIÓN ----------
     const DEFAULT_USERS = [{username:'admin',password:'1234',role:'admin'},{username:'operador',password:'operador',role:'operator'},{username:'invitado',password:'invitado',role:'viewer'}];
@@ -307,7 +403,7 @@
         document.getElementById('page-chofer-vista').style.display='none';
     }
     applyPermissions(); }
-    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
+    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
     document.getElementById('btnLogin').addEventListener('click', async()=>{ const u=document.getElementById('loginUser').value.trim(), p=document.getElementById('loginPass').value; if(!u||!p){ document.getElementById('loginError').textContent='Completa todos los campos'; return; } const btn=document.getElementById('btnLogin'); btn.disabled=true; btn.textContent='Verificando...'; let found=null; try{ if(!db){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; } const doc=await db.collection('usuarios').doc(u).get(); if(doc.exists && doc.data().password===p) found=doc.data(); else{ const snap=await db.collection('usuarios').get(); if(snap.empty){ const base=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); for(const uu of base) await db.collection('usuarios').doc(uu.username).set(uu); const doc2=await db.collection('usuarios').doc(u).get(); if(doc2.exists && doc2.data().password===p) found=doc2.data(); } } }catch(e){ firestoreReady=false; const users=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); found=users.find(us=>us.username===u && us.password===p)||null; } btn.disabled=false; btn.textContent='Ingresar'; if(!found){ document.getElementById('loginError').textContent='Usuario o contraseña incorrectos'; return; } currentUser={username:found.username,role:found.role,chofer:found.chofer||null}; sessionStorage.setItem('currentUser',JSON.stringify(currentUser)); document.getElementById('loginError').textContent=''; showApp(); initFirebase(); });
     document.getElementById('btnLogout').addEventListener('click',()=>{ sessionStorage.removeItem('currentUser'); currentUser=null; document.getElementById('mainApp').style.display='none'; showLogin(); });
     document.getElementById('btnAdminPanel').addEventListener('click',()=>{ const page=document.getElementById('page-admin'); const isOpen=page.classList.contains('active'); document.querySelectorAll('.page').forEach(p=>{ p.classList.remove('active'); p.style.display=''; }); document.querySelectorAll('.nav-tab[data-page]').forEach(t=>t.classList.remove('active')); if(!isOpen){ page.classList.add('active'); page.style.display='block'; renderUserList(); }else{ document.getElementById('page-dashboard').classList.add('active'); document.getElementById('page-dashboard').style.display='block'; document.querySelector('.nav-tab[data-page="dashboard"]').classList.add('active'); } });
@@ -316,6 +412,18 @@
     window.changeUserPassword=(username)=>{ if(currentUser?.role!=='admin') return toast('Solo admin','error'); const np=prompt(`Nueva contraseña para ${username}:`); if(!np?.trim()) return; const users=getUsers(); const user=users.find(u=>u.username===username); if(!user) return; user.password=np.trim(); if(firestoreReady) saveUserFirestore(user); else saveUsers(users); toast(`Contraseña de ${username} actualizada`); };
     window.deleteUser=(username)=>{ if(currentUser?.role!=='admin') return toast('Solo admin','error'); if(username==='admin') return toast('No se puede eliminar admin','error'); if(firestoreReady) deleteUserFirestore(username); else{ const users=getUsers().filter(u=>u.username!==username); saveUsers(users); renderUserList(); } toast(`Usuario ${username} eliminado`); };
     document.getElementById('newRole').addEventListener('change',()=>{ const sel=document.getElementById('newChoferLink'); if(document.getElementById('newRole').value==='chofer'){ sel.style.display='block'; sel.innerHTML=logChoferes.map(n=>`<option value="${n}">${n}</option>`).join(''); } else sel.style.display='none'; });
+    document.getElementById('btnEnviarIncidente')?.addEventListener('click', enviarIncidente);
+    document.getElementById('btnCerrarBannerIncidente')?.addEventListener('click', () => { document.getElementById('incidenteBanner').style.display='none'; });
+    document.getElementById('btnVerIncidentes')?.addEventListener('click', () => {
+        document.getElementById('incidenteBanner').style.display='none';
+        document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.style.display=''; });
+        document.querySelectorAll('.nav-tab[data-page]').forEach(t => t.classList.remove('active'));
+        document.getElementById('page-incidentes').classList.add('active');
+        document.querySelector('.nav-tab[data-page="incidentes"]').classList.add('active');
+        renderIncidentes();
+        incidentesData.forEach(i => { if(!incidentesVistos.includes(i.id)) incidentesVistos.push(i.id); });
+        localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos));
+    });
     document.getElementById('btnAddUser').addEventListener('click',()=>{ if(currentUser?.role!=='admin') return toast('Solo admin','error'); const username=document.getElementById('newUsername').value.trim(), password=document.getElementById('newPassword').value, role=document.getElementById('newRole').value; if(!username||!password) return toast('Completa usuario y contraseña','error'); const users=getUsers(); if(users.find(u=>u.username===username)) return toast('El usuario ya existe','error'); const newUser={username,password,role}; if(role==='chofer'){ const cn=document.getElementById('newChoferLink').value; if(!cn) return toast('Seleccioná el chofer vinculado','error'); newUser.chofer=cn; } if(firestoreReady) saveUserFirestore(newUser); else{ users.push(newUser); saveUsers(users); renderUserList(); } document.getElementById('newUsername').value=''; document.getElementById('newPassword').value=''; toast('Usuario creado'); });
 
     // ---------- INICIALIZAR FIREBASE Y LISTENERS ----------
@@ -333,7 +441,7 @@
             if (tab.dataset.page === 'flota') renderFlota();
             if (tab.dataset.page === 'descansos') { cargarDescansos(); actualizarSelectChoferes(); }
             if (tab.dataset.page === 'dashboard') renderDashboard();
-            if (tab.dataset.page === 'ordenes') renderOrdenes();
+            if (tab.dataset.page === 'ordenes') renderOrdenes(); if (tab.dataset.page === 'incidentes') renderIncidentes();
         });
     });
     document.querySelectorAll('.nav-tab[data-subpage]').forEach(btn => {
@@ -351,7 +459,17 @@
         });
     });
 
-        function initFirebase(){ if(firestoreReady||db) return; try{ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; setConnectionStatus(true); }catch(e){ console.warn(e); firestoreReady=false; setConnectionStatus(false); } if(firestoreReady){ db.collection('choferes').onSnapshot(snap=>{ logChoferes=[]; snap.forEach(d=>logChoferes.push(d.data().nombre)); renderLogistica(); actualizarSelectChoferes(); renderDashboard(); }); db.collection('registros').orderBy('fecha','desc').onSnapshot(snap=>{ logRegistros=[]; snap.forEach(d=>logRegistros.push({id:d.id,...d.data()})); if(document.getElementById('subpage-log-historial')?.classList.contains('active')) renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); if(document.getElementById('subpage-log-reportes')?.classList.contains('active')) renderReportes(); renderDashboard(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('sesiones').onSnapshot(snap=>{ logSesiones={}; const fhoy=hoy(); snap.forEach(d=>{ const data=d.data(); if(data.fecha===fhoy) logSesiones[d.id]=data; }); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('franjas').doc('actual').onSnapshot(doc=>{ if(doc.exists) franjas=doc.data().franjas||["09:00","11:00","13:00","15:00","17:00","19:00"]; autoSeleccionarFranja(franjas); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('flota').onSnapshot(snap=>{ flotaVehiculos=[]; snap.forEach(d=>flotaVehiculos.push({id:d.id,...d.data()})); renderFlota(); renderDashboard(); }); db.collection('descansos').orderBy('fecha','desc').onSnapshot(snap=>{ descansosData=[]; snap.forEach(d=>descansosData.push({id:d.id,...d.data()})); renderTablaDescansos(descansosData); }); db.collection('ordenes').orderBy('fecha','desc').onSnapshot(snap=>{ ordenesData=[]; snap.forEach(d=>ordenesData.push({id:d.id,...d.data()})); if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('estadosOrden').onSnapshot(doc=>{ if(doc.exists && doc.data().opciones) estadosOrdenOpciones=doc.data().opciones; if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); suscribirUsuarios(); initUsuariosFirestore(); } else { logChoferes=JSON.parse(localStorage.getItem('lg_choferes')||'[]'); logRegistros=JSON.parse(localStorage.getItem('lg_registros')||'[]'); const raw=JSON.parse(localStorage.getItem('lg_sesiones')||'{}'), fhoy=hoy(); logSesiones={}; for(let[k,v] of Object.entries(raw)) if(v.fecha===fhoy) logSesiones[k]=v; franjas=JSON.parse(localStorage.getItem('lg_franjas')||'["09:00","11:00","13:00","15:00","17:00","19:00"]'); autoSeleccionarFranja(franjas); flotaVehiculos=JSON.parse(localStorage.getItem('flota')||'[]'); descansosData=JSON.parse(localStorage.getItem('descansos')||'[]'); ordenesData=JSON.parse(localStorage.getItem('lg_ordenes')||'[]'); renderLogistica(); renderFlota(); renderTablaDescansos(descansosData); actualizarSelectChoferes(); renderDashboard(); renderOrdenes(); if(currentUser?.role==='chofer') renderVistaChofer(); } renderEditorHerramientas(); }
+        function initFirebase(){ if(firestoreReady||db) return; try{ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; setConnectionStatus(true); }catch(e){ console.warn(e); firestoreReady=false; setConnectionStatus(false); } if(firestoreReady){ db.collection('choferes').onSnapshot(snap=>{ logChoferes=[]; snap.forEach(d=>logChoferes.push(d.data().nombre)); renderLogistica(); actualizarSelectChoferes(); renderDashboard(); }); db.collection('registros').orderBy('fecha','desc').onSnapshot(snap=>{ logRegistros=[]; snap.forEach(d=>logRegistros.push({id:d.id,...d.data()})); if(document.getElementById('subpage-log-historial')?.classList.contains('active')) renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); if(document.getElementById('subpage-log-reportes')?.classList.contains('active')) renderReportes(); renderDashboard(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('sesiones').onSnapshot(snap=>{ logSesiones={}; const fhoy=hoy(); snap.forEach(d=>{ const data=d.data(); if(data.fecha===fhoy) logSesiones[d.id]=data; }); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('franjas').doc('actual').onSnapshot(doc=>{ if(doc.exists) franjas=doc.data().franjas||["09:00","11:00","13:00","15:00","17:00","19:00"]; autoSeleccionarFranja(franjas); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('flota').onSnapshot(snap=>{ flotaVehiculos=[]; snap.forEach(d=>flotaVehiculos.push({id:d.id,...d.data()})); renderFlota(); renderDashboard(); }); db.collection('descansos').orderBy('fecha','desc').onSnapshot(snap=>{ descansosData=[]; snap.forEach(d=>descansosData.push({id:d.id,...d.data()})); renderTablaDescansos(descansosData); }); db.collection('ordenes').orderBy('fecha','desc').onSnapshot(snap=>{ ordenesData=[]; snap.forEach(d=>ordenesData.push({id:d.id,...d.data()})); if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('estadosOrden').onSnapshot(doc=>{ if(doc.exists && doc.data().opciones) estadosOrdenOpciones=doc.data().opciones; if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('ranking').onSnapshot(doc=>{ if(doc.exists){ rankingExclusiones=doc.data().exclusiones||[]; rankingAjustes=doc.data().ajustes||{}; } if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); }); db.collection('incidentes').get().then(snapInicial=>{
+        // Sellar como vistos todos los incidentes que ya existían ANTES de activar las alertas en vivo
+        snapInicial.forEach(d => { if(!incidentesVistos.includes(d.id)) incidentesVistos.push(d.id); });
+        localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos));
+        db.collection('incidentes').orderBy('fecha','desc').onSnapshot(snap=>{
+            incidentesData = [];
+            snap.forEach(d => incidentesData.push({id:d.id, ...d.data()}));
+            if(document.getElementById('page-incidentes')?.classList.contains('active')) renderIncidentes();
+            if(currentUser && (currentUser.role==='admin'||currentUser.role==='operator')) mostrarBannerIncidentes();
+        });
+    }); suscribirUsuarios(); initUsuariosFirestore(); } else { logChoferes=JSON.parse(localStorage.getItem('lg_choferes')||'[]'); logRegistros=JSON.parse(localStorage.getItem('lg_registros')||'[]'); const raw=JSON.parse(localStorage.getItem('lg_sesiones')||'{}'), fhoy=hoy(); logSesiones={}; for(let[k,v] of Object.entries(raw)) if(v.fecha===fhoy) logSesiones[k]=v; franjas=JSON.parse(localStorage.getItem('lg_franjas')||'["09:00","11:00","13:00","15:00","17:00","19:00"]'); autoSeleccionarFranja(franjas); flotaVehiculos=JSON.parse(localStorage.getItem('flota')||'[]'); descansosData=JSON.parse(localStorage.getItem('descansos')||'[]'); ordenesData=JSON.parse(localStorage.getItem('lg_ordenes')||'[]'); incidentesData=JSON.parse(localStorage.getItem('lg_incidentes')||'[]'); if(incidentesPrimeraCarga){ incidentesPrimeraCarga=false; incidentesData.forEach(i=>{ if(!incidentesVistos.includes(i.id)) incidentesVistos.push(i.id); }); localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos)); } renderLogistica(); renderFlota(); renderTablaDescansos(descansosData); actualizarSelectChoferes(); renderDashboard(); renderOrdenes(); if(currentUser?.role==='chofer') renderVistaChofer(); if(currentUser && (currentUser.role==='admin'||currentUser.role==='operator')) mostrarBannerIncidentes(); } renderEditorHerramientas(); }
 
     // ---------- DASHBOARD ----------
     function renderDashboard(){ if(!document.getElementById('page-dashboard').classList.contains('active')) return; const dias=[]; for(let i=6;i>=0;i--){ let d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('es-AR')); } const viajesPorDia=dias.map(f=>logRegistros.filter(r=>r.fecha===f).length); if(viajesChart) viajesChart.destroy(); viajesChart=new Chart(document.getElementById('viajesChart'),{type:'bar',data:{labels:dias,datasets:[{label:'Viajes',data:viajesPorDia,backgroundColor:'#58a6ff'}]},options:{responsive:true}}); const pedidosPorChofer={}; logRegistros.forEach(r=>{pedidosPorChofer[r.chofer]=(pedidosPorChofer[r.chofer]||0)+(r.pedidos||0);}); const top5=Object.entries(pedidosPorChofer).sort((a,b)=>b[1]-a[1]).slice(0,5); if(rankingChart) rankingChart.destroy(); rankingChart=new Chart(document.getElementById('rankingChart'),{type:'bar',data:{labels:top5.map(t=>t[0]),datasets:[{label:'Pedidos totales',data:top5.map(t=>t[1]),backgroundColor:'#3fb950'}]},options:{responsive:true}}); const limpios=flotaVehiculos.filter(v=>v.interior&&v.exterior&&v.caja).length; if(flotaChart) flotaChart.destroy(); flotaChart=new Chart(document.getElementById('flotaChart'),{type:'doughnut',data:{labels:['Al día','Pendientes'],datasets:[{data:[limpios,flotaVehiculos.length-limpios],backgroundColor:['#3fb950','#f85149']}]},options:{responsive:true}}); }
@@ -404,13 +522,138 @@
 
     window.marcarPaso=(tipo)=>{ if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='operator')) return toast('Sin permisos','error'); if(!choferDetalle) return; const map={inicio:'btnInicioCarga', fin_c:'btnFinCarga', salida:'btnSalida', regreso:'btnRegreso'}; document.getElementById(map[tipo]).click(); actualizarStepper(); };
     document.getElementById('btnCerrarDetalle').addEventListener('click',()=>{ document.getElementById('detalleChofer').style.display='none'; });
-    ['btnInicioCarga','btnFinCarga','btnSalida','btnRegreso'].forEach((id,i)=>{ const tipo=['inicio','fin_c','salida','regreso'][i]; document.getElementById(id).addEventListener('click',()=>{ if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='operator'&&currentUser.role!=='chofer')) return toast('Sin permisos','error'); if(!choferDetalle) return; const key=`${choferDetalle}|${franjaActiva}`; const hora=new Date().toTimeString().slice(0,5); if(!logSesiones[key] || logSesiones[key].fecha !== hoy() || tipo==='inicio') logSesiones[key]={}; logSesiones[key][tipo]=hora; logSesiones[key].pedidos=parseInt(document.getElementById('detPedidos').value)||0; logSesiones[key].cajas=parseInt(document.getElementById('detCajas').value)||0; logSesiones[key].fecha=hoy(); guardarEnFirestore('sesiones',key,logSesiones[key]); if(tipo==='regreso' && logSesiones[key].inicio && logSesiones[key].fin_c && logSesiones[key].salida){ const s=logSesiones[key]; const toMin=t=>{ let[h,m]=t.split(':').map(Number); return h*60+m; }; const minCarga=toMin(s.fin_c)-toMin(s.inicio); const minRec=toMin(s.regreso)-toMin(s.salida); const registro={ fecha:hoy(), chofer:choferDetalle, franja:franjaActiva, pedidos:s.pedidos||0, cajas:s.cajas||0, inicio:s.inicio, fin_c:s.fin_c, salida:s.salida, regreso:s.regreso, minCarga, minRec }; if(firestoreReady) db.collection('registros').add(registro); else{ registro.id=Date.now().toString(); logRegistros.push(registro); localStorage.setItem('lg_registros',JSON.stringify(logRegistros)); } } renderLogistica(); if(currentUser.role==='chofer') renderVistaChofer(); else actualizarStepper(); }); });
+    ['btnInicioCarga','btnFinCarga','btnSalida','btnRegreso'].forEach((id,i)=>{ const tipo=['inicio','fin_c','salida','regreso'][i]; document.getElementById(id).addEventListener('click',()=>{ if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='operator'&&currentUser.role!=='chofer')) return toast('Sin permisos','error'); if(!choferDetalle) return; const key=`${choferDetalle}|${franjaActiva}`; const hora=new Date().toTimeString().slice(0,5); if(!logSesiones[key] || logSesiones[key].fecha !== hoy() || tipo==='inicio') logSesiones[key]={}; logSesiones[key][tipo]=hora; logSesiones[key].pedidos=parseInt(document.getElementById('detPedidos').value)||0; logSesiones[key].cajas=parseInt(document.getElementById('detCajas').value)||0; logSesiones[key].fecha=hoy(); guardarEnFirestore('sesiones',key,logSesiones[key], tipo!=='inicio'); if(tipo==='regreso' && logSesiones[key].inicio && logSesiones[key].fin_c && logSesiones[key].salida){ const s=logSesiones[key]; const toMin=t=>{ let[h,m]=t.split(':').map(Number); return h*60+m; }; const minCarga=toMin(s.fin_c)-toMin(s.inicio); const minRec=toMin(s.regreso)-toMin(s.salida); const registro={ fecha:hoy(), chofer:choferDetalle, franja:franjaActiva, pedidos:s.pedidos||0, cajas:s.cajas||0, inicio:s.inicio, fin_c:s.fin_c, salida:s.salida, regreso:s.regreso, minCarga, minRec }; if(firestoreReady) db.collection('registros').add(registro); else{ registro.id=Date.now().toString(); logRegistros.push(registro); localStorage.setItem('lg_registros',JSON.stringify(logRegistros)); } } renderLogistica(); if(currentUser.role==='chofer') renderVistaChofer(); else actualizarStepper(); }); });
     document.getElementById('detPedidos').addEventListener('input',()=>{ if(choferDetalle){ const key=`${choferDetalle}|${franjaActiva}`; if(!logSesiones[key] || logSesiones[key].fecha !== hoy()) logSesiones[key]={}; logSesiones[key].pedidos=parseInt(document.getElementById('detPedidos').value)||0; logSesiones[key].cajas=parseInt(document.getElementById('detCajas').value)||0; guardarEnFirestore('sesiones',key,logSesiones[key]); } });
     function renderHistorial(){ const el=document.getElementById('historialContent'); if(!logRegistros.length){ el.innerHTML='<div class="empty-state">Sin viajes completados.</div>'; return; } const canEdit=currentUser && (currentUser.role==='admin'||currentUser.role==='operator'); el.innerHTML=[...logRegistros].reverse().map(r=>`<div class="card" style="margin-bottom:8px;" id="hist-card-${r.id}"><div style="display:flex; justify-content:space-between;"><strong>${r.chofer} · ${r.franja} · ${r.fecha}</strong>${canEdit?`<div><button class="btn btn-sm btn-outline" onclick="toggleEditHistorial('${r.id}')">✏️</button><button class="btn btn-sm btn-danger" onclick="eliminarRegistro('${r.id}')">🗑</button></div>`:''}</div><div id="hist-view-${r.id}">Inicio: ${r.inicio} | Fin carga: ${r.fin_c} | Salida: ${r.salida} | Regreso: ${r.regreso}<br>Pedidos: ${r.pedidos||0} | Cajas: ${r.cajas||0} | Carga: ${formatMinutos(r.minCarga)} | Recorrido: ${formatMinutos(r.minRec)}</div><div id="hist-edit-${r.id}" style="display:none; margin-top:10px;"><div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px;"><input type="time" id="he-inicio-${r.id}" value="${r.inicio||''}" class="form-input"><input type="time" id="he-finc-${r.id}" value="${r.fin_c||''}" class="form-input"><input type="time" id="he-salida-${r.id}" value="${r.salida||''}" class="form-input"><input type="time" id="he-regreso-${r.id}" value="${r.regreso||''}" class="form-input"><input type="number" id="he-ped-${r.id}" value="${r.pedidos||0}" class="form-input"><input type="number" id="he-cajas-${r.id}" value="${r.cajas||0}" class="form-input"></div><button class="btn btn-sm btn-primary" onclick="guardarEditHistorial('${r.id}')">💾 Guardar</button><button class="btn btn-sm btn-outline" onclick="toggleEditHistorial('${r.id}')">Cancelar</button></div></div>`).join(''); }
     window.toggleEditHistorial=(id)=>{ const v=document.getElementById(`hist-view-${id}`), e=document.getElementById(`hist-edit-${id}`); if(v && e){ v.style.display=e.style.display==='none'?'block':'none'; e.style.display=e.style.display==='none'?'block':'none'; } };
     window.guardarEditHistorial=(id)=>{ if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='operator')) return toast('Sin permisos','error'); const inicio=document.getElementById(`he-inicio-${id}`).value, fin_c=document.getElementById(`he-finc-${id}`).value, salida=document.getElementById(`he-salida-${id}`).value, regreso=document.getElementById(`he-regreso-${id}`).value, pedidos=parseInt(document.getElementById(`he-ped-${id}`).value)||0, cajas=parseInt(document.getElementById(`he-cajas-${id}`).value)||0; const toMin=t=>{ if(!t) return 0; let[h,m]=t.split(':').map(Number); return h*60+m; }; const minCarga=(inicio&&fin_c)?toMin(fin_c)-toMin(inicio):0, minRec=(salida&&regreso)?toMin(regreso)-toMin(salida):0; const updates={inicio,fin_c,salida,regreso,pedidos,cajas,minCarga,minRec}; if(firestoreReady) db.collection('registros').doc(id).update(updates).then(()=>toast('Actualizado','success')); else{ const idx=logRegistros.findIndex(r=>r.id===id); if(idx!==-1) logRegistros[idx]={...logRegistros[idx],...updates}; localStorage.setItem('lg_registros',JSON.stringify(logRegistros)); toast('Actualizado','success'); } renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); };
     window.eliminarRegistro=(id)=>{ if(!currentUser||(currentUser.role!=='admin'&&currentUser.role!=='operator')) return toast('Sin permisos','error'); if(!confirm('¿Eliminar este registro?')) return; if(firestoreReady) db.collection('registros').doc(id).delete().then(()=>toast('Eliminado','success')); else{ logRegistros=logRegistros.filter(r=>r.id!==id); localStorage.setItem('lg_registros',JSON.stringify(logRegistros)); toast('Eliminado','success'); } renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); };
-    function renderRanking(){ const el=document.getElementById('rankingContent'); if(!logRegistros.length){ el.innerHTML='<div class="empty-state">Sin datos.</div>'; return; } const stats={}; logRegistros.forEach(r=>{ if(!stats[r.chofer]) stats[r.chofer]={viajes:0,pedidos:0,cajas:0,sumaRec:0,sumaCarga:0}; stats[r.chofer].viajes++; stats[r.chofer].pedidos+=r.pedidos||0; stats[r.chofer].cajas+=r.cajas||0; stats[r.chofer].sumaRec+=r.minRec||0; stats[r.chofer].sumaCarga+=r.minCarga||0; }); const ranking=Object.entries(stats).map(([n,d])=>({nombre:n,viajes:d.viajes,pedidos:d.pedidos,cajas:d.cajas,promRec:Math.round(d.sumaRec/d.viajes),promCarga:Math.round(d.sumaCarga/d.viajes),promPed:(d.pedidos/d.viajes).toFixed(1),promCajas:(d.cajas/d.viajes).toFixed(1)})).sort((a,b)=>b.pedidos-a.pedidos); el.innerHTML=`<table><thead><tr><th>Chofer</th><th>Viajes</th><th>Total pedidos</th><th>Total cajas</th><th>Prom. recorrido</th><th>Prom. carga</th><th>Ped./viaje</th><th>Cajas/viaje</th></tr></thead><tbody>${ranking.map(r=>`<tr><td>${r.nombre}</td><td>${r.viajes}</td><td>${r.pedidos}</td><td>${r.cajas}</td><td>${formatMinutos(r.promRec)}</td><td>${formatMinutos(r.promCarga)}</td><td>${r.promPed}</td><td>${r.promCajas}</td></tr>`).join('')}</tbody></table>`; }
+    function renderRanking(){
+        const el = document.getElementById('rankingContent');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!logRegistros.length && !Object.keys(rankingAjustes).length) { el.innerHTML = '<div class="empty-state">Sin datos.</div>'; return; }
+        const stats = {};
+        logRegistros.forEach(r => {
+            if (!stats[r.chofer]) stats[r.chofer] = { viajes:0, pedidos:0, cajas:0, sumaRec:0, sumaCarga:0 };
+            stats[r.chofer].viajes++;
+            stats[r.chofer].pedidos += r.pedidos||0;
+            stats[r.chofer].cajas += r.cajas||0;
+            stats[r.chofer].sumaRec += r.minRec||0;
+            stats[r.chofer].sumaCarga += r.minCarga||0;
+        });
+        // Asegurar que los choferes con ajuste manual aparezcan aunque no tengan registros
+        Object.keys(rankingAjustes).forEach(n => { if (!stats[n]) stats[n] = { viajes:0, pedidos:0, cajas:0, sumaRec:0, sumaCarga:0 }; });
+
+        let ranking = Object.entries(stats).map(([n,d]) => {
+            const calc = { nombre:n, viajes:d.viajes, pedidos:d.pedidos, cajas:d.cajas, promRec: d.viajes?Math.round(d.sumaRec/d.viajes):0, promCarga: d.viajes?Math.round(d.sumaCarga/d.viajes):0, promPed: d.viajes?(d.pedidos/d.viajes).toFixed(1):'0.0', promCajas: d.viajes?(d.cajas/d.viajes).toFixed(1):'0.0' };
+            const aj = rankingAjustes[n];
+            if (aj) {
+                if (aj.viajes != null) calc.viajes = aj.viajes;
+                if (aj.pedidos != null) calc.pedidos = aj.pedidos;
+                if (aj.cajas != null) calc.cajas = aj.cajas;
+                if (aj.promRec != null) calc.promRec = aj.promRec;
+                if (aj.promCarga != null) calc.promCarga = aj.promCarga;
+                calc.ajustado = true;
+            }
+            return calc;
+        }).sort((a,b) => b.pedidos - a.pedidos);
+
+        const visibles = ranking.filter(r => !rankingExclusiones.includes(r.nombre));
+        const excluidos = ranking.filter(r => rankingExclusiones.includes(r.nombre));
+
+        const filaHtml = (r) => {
+            if (isAdmin && rankingEditando === r.nombre) {
+                return `<tr style="background:var(--surface2);">
+                    <td>${r.nombre} ${r.ajustado?'✏️':''}</td>
+                    <td><input type="number" class="form-input" id="rk-viajes-${r.nombre}" value="${r.viajes}" style="width:70px;"></td>
+                    <td><input type="number" class="form-input" id="rk-pedidos-${r.nombre}" value="${r.pedidos}" style="width:80px;"></td>
+                    <td><input type="number" class="form-input" id="rk-cajas-${r.nombre}" value="${r.cajas}" style="width:80px;"></td>
+                    <td><input type="number" class="form-input" id="rk-promrec-${r.nombre}" value="${r.promRec}" style="width:70px;" title="minutos"></td>
+                    <td><input type="number" class="form-input" id="rk-promcarga-${r.nombre}" value="${r.promCarga}" style="width:70px;" title="minutos"></td>
+                    <td>${r.promPed}</td><td>${r.promCajas}</td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-sm btn-primary" onclick="guardarAjusteRanking('${r.nombre}')">💾</button>
+                        <button class="btn btn-sm btn-outline" onclick="cancelarEdicionRanking()">✕</button>
+                        ${r.ajustado?`<button class="btn btn-sm btn-outline" onclick="restablecerRanking('${r.nombre}')" title="Quitar ajuste manual">↺</button>`:''}
+                    </td>
+                </tr>`;
+            }
+            return `<tr>
+                <td>${r.nombre} ${r.ajustado?'<span title="Valores ajustados manualmente">✏️</span>':''}</td>
+                <td>${r.viajes}</td><td>${r.pedidos}</td><td>${r.cajas}</td>
+                <td>${formatMinutos(r.promRec)}</td><td>${formatMinutos(r.promCarga)}</td>
+                <td>${r.promPed}</td><td>${r.promCajas}</td>
+                ${isAdmin ? `<td style="white-space:nowrap;">
+                    <button class="btn btn-sm btn-outline" onclick="editarRankingFila('${r.nombre}')">✏️</button>
+                    <button class="btn btn-sm btn-outline" onclick="toggleExclusionRanking('${r.nombre}')" title="Excluir del ranking">👁️</button>
+                    <button class="btn btn-sm btn-danger" onclick="borrarRegistrosChofer('${r.nombre}')" title="Borrar todos sus registros">🗑</button>
+                </td>` : ''}
+            </tr>`;
+        };
+
+        const headExtra = isAdmin ? '<th></th>' : '';
+        el.innerHTML = `<table><thead><tr><th>Chofer</th><th>Viajes</th><th>Total pedidos</th><th>Total cajas</th><th>Prom. recorrido</th><th>Prom. carga</th><th>Ped./viaje</th><th>Cajas/viaje</th>${headExtra}</tr></thead><tbody>${visibles.map(filaHtml).join('')}</tbody></table>`
+            + (isAdmin && excluidos.length ? `<div style="margin-top:14px;font-size:0.8rem;color:var(--text-muted);">Excluidos del ranking: ${excluidos.map(r=>`${r.nombre} <button class="btn btn-sm btn-outline" onclick="toggleExclusionRanking('${r.nombre}')">Incluir</button>`).join(' · ')}</div>` : '');
+    }
+
+    window.editarRankingFila = (nombre) => { if (currentUser?.role !== 'admin') return toast('Solo admin','error'); rankingEditando = nombre; renderRanking(); };
+    window.cancelarEdicionRanking = () => { rankingEditando = null; renderRanking(); };
+
+    window.guardarAjusteRanking = (nombre) => {
+        if (currentUser?.role !== 'admin') return toast('Solo admin','error');
+        const viajes = parseInt(document.getElementById(`rk-viajes-${nombre}`).value)||0;
+        const pedidos = parseInt(document.getElementById(`rk-pedidos-${nombre}`).value)||0;
+        const cajas = parseInt(document.getElementById(`rk-cajas-${nombre}`).value)||0;
+        const promRec = parseInt(document.getElementById(`rk-promrec-${nombre}`).value)||0;
+        const promCarga = parseInt(document.getElementById(`rk-promcarga-${nombre}`).value)||0;
+        rankingAjustes[nombre] = { viajes, pedidos, cajas, promRec, promCarga };
+        guardarConfigRanking();
+        rankingEditando = null;
+        renderRanking();
+        toast('Ranking actualizado ✅','success');
+    };
+
+    window.restablecerRanking = (nombre) => {
+        if (currentUser?.role !== 'admin') return toast('Solo admin','error');
+        delete rankingAjustes[nombre];
+        guardarConfigRanking();
+        rankingEditando = null;
+        renderRanking();
+        toast('Ajuste manual eliminado','success');
+    };
+
+    window.toggleExclusionRanking = (nombre) => {
+        if (currentUser?.role !== 'admin') return toast('Solo admin','error');
+        if (rankingExclusiones.includes(nombre)) rankingExclusiones = rankingExclusiones.filter(n => n !== nombre);
+        else rankingExclusiones.push(nombre);
+        guardarConfigRanking();
+        renderRanking();
+    };
+
+    let borrarRegistrosConfirmar = null;
+    window.borrarRegistrosChofer = (nombre) => {
+        if (currentUser?.role !== 'admin') return toast('Solo admin','error');
+        if (borrarRegistrosConfirmar !== nombre) {
+            borrarRegistrosConfirmar = nombre;
+            toast(`Tocá 🗑 de nuevo para borrar TODOS los registros de ${nombre}`, 'error');
+            setTimeout(() => { if (borrarRegistrosConfirmar === nombre) borrarRegistrosConfirmar = null; }, 4000);
+            return;
+        }
+        borrarRegistrosConfirmar = null;
+        if (firestoreReady) {
+            db.collection('registros').where('chofer','==',nombre).get().then(snap => {
+                const batch = db.batch();
+                snap.forEach(d => batch.delete(d.ref));
+                return batch.commit();
+            }).then(() => toast(`Registros de ${nombre} eliminados`,'success'));
+        } else {
+            logRegistros = logRegistros.filter(r => r.chofer !== nombre);
+            localStorage.setItem('lg_registros', JSON.stringify(logRegistros));
+            renderRanking();
+            renderHistorial();
+            toast(`Registros de ${nombre} eliminados`,'success');
+        }
+    };
     function renderReportes(){ const el=document.getElementById('reportesContent'); if(!logRegistros.length){ el.innerHTML='<div class="empty-state">Sin datos.</div>'; return; } const total=logRegistros.length, totalPed=logRegistros.reduce((a,r)=>a+(r.pedidos||0),0), totalCajas=logRegistros.reduce((a,r)=>a+(r.cajas||0),0); el.innerHTML=`<p>Total viajes: ${total} | Total pedidos: ${totalPed} | Total cajas: ${totalCajas}</p>`; }
     document.getElementById('btnExportarCSV').addEventListener('click',()=>{ if(!logRegistros.length) return toast('Sin datos','error'); const csv=['Fecha,Chofer,Franja,Pedidos,Cajas,Inicio,Fin carga,Salida,Regreso,Min carga,Min recorrido'].concat(logRegistros.map(r=>[r.fecha,r.chofer,r.franja,r.pedidos||0,r.cajas||0,r.inicio,r.fin_c,r.salida,r.regreso,r.minCarga,r.minRec].join(','))).join('\n'); const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='logistica.csv'; a.click(); });
     function renderChoferesABM(){ const list=document.getElementById('listaChoferesABM'); list.innerHTML=logChoferes.length?logChoferes.map(n=>`<div style="display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid var(--border);"><span>${n}</span><button class="btn btn-sm btn-danger" onclick="eliminarChofer('${n}')" ${currentUser.role!=='admin'?'disabled':''}>✕</button></div>`).join(''):'<div class="empty-state">No hay choferes.</div>'; }
@@ -421,6 +664,36 @@
     let franjasEditando=[];
     function renderFranjaEditorLista(){ const lista=document.getElementById('franjaEditorLista'); if(!lista) return; lista.innerHTML=franjasEditando.map((f,i)=>`<div style="display:flex; gap:6px; background:var(--surface); padding:6px 10px; border-radius:8px;"><span>${f}</span><button onclick="quitarFranjaEditor(${i})" style="background:none; border:none; color:var(--danger);">✕</button></div>`).join(''); }
     window.quitarFranjaEditor=(i)=>{ franjasEditando.splice(i,1); renderFranjaEditorLista(); };
+    let limpiarTurnoConfirmar = false;
+    document.getElementById('btnLimpiarTurno').addEventListener('click', () => {
+        if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'operator')) return toast('Sin permisos', 'error');
+        const btn = document.getElementById('btnLimpiarTurno');
+        if (!limpiarTurnoConfirmar) {
+            limpiarTurnoConfirmar = true;
+            const original = btn.textContent;
+            btn.textContent = '⚠️ Tocá de nuevo para confirmar';
+            toast(`Vas a limpiar la franja ${franjaActiva}. Tocá el botón otra vez para confirmar.`, 'error');
+            setTimeout(() => { limpiarTurnoConfirmar = false; btn.textContent = original; }, 4000);
+            return;
+        }
+        limpiarTurnoConfirmar = false;
+        btn.textContent = '🧹 Limpiar turno';
+
+        // Borrar todas las sesiones (de cualquier nombre guardado) que correspondan a la franja activa
+        let borradas = 0;
+        Object.keys(logSesiones).forEach(key => {
+            if (key.endsWith(`|${franjaActiva}`)) {
+                delete logSesiones[key];
+                if (firestoreReady) db.collection('sesiones').doc(key).delete();
+                borradas++;
+            }
+        });
+        if (!firestoreReady) localStorage.setItem('lg_sesiones', JSON.stringify(logSesiones));
+        renderLogistica();
+        if (currentUser.role === 'chofer') renderVistaChofer();
+        toast(borradas ? `Turno ${franjaActiva} limpiado ✅ (${borradas})` : `No había datos para limpiar en ${franjaActiva}`, 'success');
+    });
+
     document.getElementById('btnEditarFranjas').addEventListener('click',()=>{ if(currentUser.role!=='admin') return toast('Solo admin','error'); const ed=document.getElementById('franjaEditor'); if(ed.style.display==='none'){ franjasEditando=[...franjas]; renderFranjaEditorLista(); ed.style.display='block'; }else ed.style.display='none'; });
     document.getElementById('btnAgregarFranja').addEventListener('click',()=>{ const val=document.getElementById('inputNuevaFranja').value; if(!val) return toast('Seleccioná hora','error'); if(franjasEditando.includes(val)) return toast('Ya existe','error'); franjasEditando.push(val); renderFranjaEditorLista(); document.getElementById('inputNuevaFranja').value=''; });
     document.getElementById('btnGuardarFranjas').addEventListener('click',()=>{ if(currentUser.role!=='admin') return toast('Solo admin','error'); if(!franjasEditando.length) return toast('Agregá al menos una franja','error'); franjas=[...franjasEditando].sort(); autoSeleccionarFranja(franjas); if(firestoreReady) db.collection('franjas').doc('actual').set({franjas}); else localStorage.setItem('lg_franjas',JSON.stringify(franjas)); renderLogistica(); document.getElementById('franjaEditor').style.display='none'; toast('Franjas actualizadas'); });
@@ -552,6 +825,7 @@
     // ---------- INICIO ----------
     checkAuth();
 
+    if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW error',e)); }); }
 </script>
 </body>
 </html>
