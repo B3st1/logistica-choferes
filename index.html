@@ -124,6 +124,7 @@
     <button class="nav-tab" data-page="ordenes">📋 Ordenes</button>
     <button class="nav-tab" data-page="incidentes">🚨 Incidentes</button>
     <button class="nav-tab" data-page="mapa">🗺️ Mapa</button>
+    <button class="nav-tab" data-page="asistencia">📝 Asistencia</button>
 </nav>
 
 <!-- VISTA CHOFER -->
@@ -160,6 +161,15 @@
         </div>
     </div>
     <div class="card">
+        <div class="section-title">📝 Mi Asistencia</div>
+        <div id="asistChoferHoy" style="margin-bottom:10px;"></div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="btnMarcarEntrada">🟢 Marcar entrada</button>
+            <button class="btn btn-outline" id="btnMarcarSalida">🔴 Marcar salida</button>
+        </div>
+        <div id="asistChoferSemana" style="margin-top:8px;font-size:0.8rem;color:var(--text-muted);"></div>
+    </div>
+    <div class="card">
         <div class="section-title">📍 Ubicación</div>
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
             <input type="checkbox" id="cvCompartirUbicacion" style="width:18px;height:18px;">
@@ -190,6 +200,19 @@
         <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">Solo se muestra la posición actual de cada chofer mientras tiene la app abierta y activó "Compartir ubicación". No se guarda historial.</div>
         <div class="map-container" style="display:block;"><div id="mapaVivo" style="height:400px;"></div></div>
         <div id="listaUbicaciones" style="margin-top:10px;font-size:0.85rem;"></div>
+    </div>
+</div>
+
+<!-- ASISTENCIA -->
+<div class="page" id="page-asistencia">
+    <div class="card">
+        <div class="section-title">📝 Asistencia semanal</div>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+            <label style="font-size:0.8rem;color:var(--text-muted);">Semana de:</label>
+            <input type="date" class="form-input" id="asistFecha" style="max-width:180px;">
+        </div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:8px;">Objetivo: 48hs semanales (8hs × 6 días, Lun-Sáb). Tocá una celda para editar (solo admin).</div>
+        <div class="table-wrap"><table id="tablaAsistencia"></table></div>
     </div>
 </div>
 
@@ -398,6 +421,11 @@
     };
     function formatMinutos(min){ if(min===undefined) return '—'; if(min<60) return `${min} min`; let h=Math.floor(min/60), m=min%60; return m?`${h}h ${m}min`:`${h}h`; }
     function hoy(){ return new Date().toLocaleDateString('es-AR'); }
+    function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+    function lunesDeSemana(fechaISO){ const d=new Date(fechaISO+'T00:00:00'); const dia=d.getDay(); const offset=dia===0?-6:1-dia; d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+    function fechaISOaDDMM(fechaISO){ const [y,m,dd]=fechaISO.split('-'); return `${dd}/${m}`; }
+    function diffHoras(entrada, salida){ if(!entrada||!salida) return 0; const [h1,m1]=entrada.split(':').map(Number); const [h2,m2]=salida.split(':').map(Number); let mins=(h2*60+m2)-(h1*60+m1); if(mins<0) mins+=24*60; return mins/60; }
+    function guardarFichada(id, data){ if(firestoreReady) db.collection('fichadas').doc(id).set(data,{merge:true}); else { const idx=fichadasData.findIndex(x=>x.id===id); if(idx!==-1) fichadasData[idx]={...fichadasData[idx],...data,id}; else fichadasData.push({...data,id}); localStorage.setItem('lg_fichadas',JSON.stringify(fichadasData)); renderAsistencia(); if(currentUser?.role==='chofer') renderAsistenciaChofer(); } }
     function guardarEnFirestore(coleccion, id, datos, merge=true){ if(firestoreReady) db.collection(coleccion).doc(id).set(datos, merge?{merge:true}:{}); }
 
     // ---------- AUTENTICACIÓN ----------
@@ -423,7 +451,7 @@
         document.getElementById('page-chofer-vista').style.display='none';
     }
     applyPermissions(); }
-    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
+    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass):not(#asistFecha), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
     document.getElementById('btnLogin').addEventListener('click', async()=>{ const u=document.getElementById('loginUser').value.trim(), p=document.getElementById('loginPass').value; if(!u||!p){ document.getElementById('loginError').textContent='Completa todos los campos'; return; } const btn=document.getElementById('btnLogin'); btn.disabled=true; btn.textContent='Verificando...'; let found=null; try{ if(!db){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; } const doc=await db.collection('usuarios').doc(u).get(); if(doc.exists && doc.data().password===p) found=doc.data(); else{ const snap=await db.collection('usuarios').get(); if(snap.empty){ const base=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); for(const uu of base) await db.collection('usuarios').doc(uu.username).set(uu); const doc2=await db.collection('usuarios').doc(u).get(); if(doc2.exists && doc2.data().password===p) found=doc2.data(); } } }catch(e){ firestoreReady=false; const users=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); found=users.find(us=>us.username===u && us.password===p)||null; } btn.disabled=false; btn.textContent='Ingresar'; if(!found){ document.getElementById('loginError').textContent='Usuario o contraseña incorrectos'; return; } currentUser={username:found.username,role:found.role,chofer:found.chofer||null}; sessionStorage.setItem('currentUser',JSON.stringify(currentUser)); document.getElementById('loginError').textContent=''; showApp(); initFirebase(); });
     document.getElementById('btnLogout').addEventListener('click',()=>{ if(currentUser?.role==='chofer') detenerCompartirUbicacion(); sessionStorage.removeItem('currentUser'); currentUser=null; document.getElementById('mainApp').style.display='none'; showLogin(); });
     document.getElementById('btnAdminPanel').addEventListener('click',()=>{ const page=document.getElementById('page-admin'); const isOpen=page.classList.contains('active'); document.querySelectorAll('.page').forEach(p=>{ p.classList.remove('active'); p.style.display=''; }); document.querySelectorAll('.nav-tab[data-page]').forEach(t=>t.classList.remove('active')); if(!isOpen){ page.classList.add('active'); page.style.display='block'; renderUserList(); }else{ document.getElementById('page-dashboard').classList.add('active'); document.getElementById('page-dashboard').style.display='block'; document.querySelector('.nav-tab[data-page="dashboard"]').classList.add('active'); } });
@@ -461,7 +489,7 @@
             if (tab.dataset.page === 'flota') renderFlota();
             if (tab.dataset.page === 'descansos') { cargarDescansos(); actualizarSelectChoferes(); }
             if (tab.dataset.page === 'dashboard') renderDashboard();
-            if (tab.dataset.page === 'ordenes') renderOrdenes(); if (tab.dataset.page === 'incidentes') renderIncidentes(); if (tab.dataset.page === 'mapa') initMapaVivo();
+            if (tab.dataset.page === 'ordenes') renderOrdenes(); if (tab.dataset.page === 'incidentes') renderIncidentes(); if (tab.dataset.page === 'mapa') initMapaVivo(); if (tab.dataset.page === 'asistencia') renderAsistencia();
         });
     });
     document.querySelectorAll('.nav-tab[data-subpage]').forEach(btn => {
@@ -479,7 +507,8 @@
         });
     });
 
-        function initFirebase(){ if(firestoreReady||db) return; try{ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; setConnectionStatus(true); }catch(e){ console.warn(e); firestoreReady=false; setConnectionStatus(false); } if(firestoreReady){ db.collection('choferes').onSnapshot(snap=>{ logChoferes=[]; snap.forEach(d=>logChoferes.push(d.data().nombre)); renderLogistica(); actualizarSelectChoferes(); renderDashboard(); }); db.collection('registros').orderBy('fecha','desc').onSnapshot(snap=>{ logRegistros=[]; snap.forEach(d=>logRegistros.push({id:d.id,...d.data()})); if(document.getElementById('subpage-log-historial')?.classList.contains('active')) renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); if(document.getElementById('subpage-log-reportes')?.classList.contains('active')) renderReportes(); renderDashboard(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('sesiones').onSnapshot(snap=>{ logSesiones={}; const fhoy=hoy(); snap.forEach(d=>{ const data=d.data(); if(data.fecha===fhoy) logSesiones[d.id]=data; }); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('franjas').doc('actual').onSnapshot(doc=>{ if(doc.exists) franjas=doc.data().franjas||["09:00","11:00","13:00","15:00","17:00","19:00"]; autoSeleccionarFranja(franjas); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('flota').onSnapshot(snap=>{ flotaVehiculos=[]; snap.forEach(d=>flotaVehiculos.push({id:d.id,...d.data()})); renderFlota(); renderDashboard(); }); db.collection('descansos').orderBy('fecha','desc').onSnapshot(snap=>{ descansosData=[]; snap.forEach(d=>descansosData.push({id:d.id,...d.data()})); renderTablaDescansos(descansosData); }); db.collection('ordenes').orderBy('fecha','desc').onSnapshot(snap=>{ ordenesData=[]; snap.forEach(d=>ordenesData.push({id:d.id,...d.data()})); if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('estadosOrden').onSnapshot(doc=>{ if(doc.exists && doc.data().opciones) estadosOrdenOpciones=doc.data().opciones; if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('ranking').onSnapshot(doc=>{ if(doc.exists){ rankingExclusiones=doc.data().exclusiones||[]; rankingAjustes=doc.data().ajustes||{}; } if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); }); db.collection('incidentes').get().then(snapInicial=>{
+        function initFirebase(){ if(firestoreReady||db) return; try{ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; setConnectionStatus(true); }catch(e){ console.warn(e); firestoreReady=false; setConnectionStatus(false); } if(firestoreReady){ db.collection('choferes').onSnapshot(snap=>{ logChoferes=[]; snap.forEach(d=>logChoferes.push(d.data().nombre)); renderLogistica(); actualizarSelectChoferes(); renderDashboard(); }); db.collection('registros').orderBy('fecha','desc').onSnapshot(snap=>{ logRegistros=[]; snap.forEach(d=>logRegistros.push({id:d.id,...d.data()})); if(document.getElementById('subpage-log-historial')?.classList.contains('active')) renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); if(document.getElementById('subpage-log-reportes')?.classList.contains('active')) renderReportes(); renderDashboard(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('sesiones').onSnapshot(snap=>{ logSesiones={}; const fhoy=hoy(); snap.forEach(d=>{ const data=d.data(); if(data.fecha===fhoy) logSesiones[d.id]=data; }); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('franjas').doc('actual').onSnapshot(doc=>{ if(doc.exists) franjas=doc.data().franjas||["09:00","11:00","13:00","15:00","17:00","19:00"]; autoSeleccionarFranja(franjas); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('flota').onSnapshot(snap=>{ flotaVehiculos=[]; snap.forEach(d=>flotaVehiculos.push({id:d.id,...d.data()})); renderFlota(); renderDashboard(); }); db.collection('descansos').orderBy('fecha','desc').onSnapshot(snap=>{ descansosData=[]; snap.forEach(d=>descansosData.push({id:d.id,...d.data()})); renderTablaDescansos(descansosData); }); db.collection('ordenes').orderBy('fecha','desc').onSnapshot(snap=>{ ordenesData=[]; snap.forEach(d=>ordenesData.push({id:d.id,...d.data()})); if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('estadosOrden').onSnapshot(doc=>{ if(doc.exists && doc.data().opciones) estadosOrdenOpciones=doc.data().opciones; if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('fichadas').onSnapshot(snap => { fichadasData = []; snap.forEach(d => fichadasData.push({id:d.id, ...d.data()})); if(document.getElementById('page-asistencia')?.classList.contains('active')) renderAsistencia(); if(currentUser?.role==='chofer') renderAsistenciaChofer(); });
+    db.collection('config').doc('ranking').onSnapshot(doc=>{ if(doc.exists){ rankingExclusiones=doc.data().exclusiones||[]; rankingAjustes=doc.data().ajustes||{}; } if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); }); db.collection('incidentes').get().then(snapInicial=>{
         // Sellar como vistos todos los incidentes que ya existían ANTES de activar las alertas en vivo
         snapInicial.forEach(d => { if(!incidentesVistos.includes(d.id)) incidentesVistos.push(d.id); });
         localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos));
@@ -489,7 +518,7 @@
             if(document.getElementById('page-incidentes')?.classList.contains('active')) renderIncidentes();
             if(currentUser && (currentUser.role==='admin'||currentUser.role==='operator')) mostrarBannerIncidentes();
         });
-    }); suscribirUsuarios(); initUsuariosFirestore(); } else { logChoferes=JSON.parse(localStorage.getItem('lg_choferes')||'[]'); logRegistros=JSON.parse(localStorage.getItem('lg_registros')||'[]'); const raw=JSON.parse(localStorage.getItem('lg_sesiones')||'{}'), fhoy=hoy(); logSesiones={}; for(let[k,v] of Object.entries(raw)) if(v.fecha===fhoy) logSesiones[k]=v; franjas=JSON.parse(localStorage.getItem('lg_franjas')||'["09:00","11:00","13:00","15:00","17:00","19:00"]'); autoSeleccionarFranja(franjas); flotaVehiculos=JSON.parse(localStorage.getItem('flota')||'[]'); descansosData=JSON.parse(localStorage.getItem('descansos')||'[]'); ordenesData=JSON.parse(localStorage.getItem('lg_ordenes')||'[]'); incidentesData=JSON.parse(localStorage.getItem('lg_incidentes')||'[]'); if(incidentesPrimeraCarga){ incidentesPrimeraCarga=false; incidentesData.forEach(i=>{ if(!incidentesVistos.includes(i.id)) incidentesVistos.push(i.id); }); localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos)); } renderLogistica(); renderFlota(); renderTablaDescansos(descansosData); actualizarSelectChoferes(); renderDashboard(); renderOrdenes(); if(currentUser?.role==='chofer') renderVistaChofer(); if(currentUser && (currentUser.role==='admin'||currentUser.role==='operator')) mostrarBannerIncidentes(); } renderEditorHerramientas(); }
+    }); suscribirUsuarios(); initUsuariosFirestore(); } else { logChoferes=JSON.parse(localStorage.getItem('lg_choferes')||'[]'); logRegistros=JSON.parse(localStorage.getItem('lg_registros')||'[]'); const raw=JSON.parse(localStorage.getItem('lg_sesiones')||'{}'), fhoy=hoy(); logSesiones={}; for(let[k,v] of Object.entries(raw)) if(v.fecha===fhoy) logSesiones[k]=v; franjas=JSON.parse(localStorage.getItem('lg_franjas')||'["09:00","11:00","13:00","15:00","17:00","19:00"]'); autoSeleccionarFranja(franjas); flotaVehiculos=JSON.parse(localStorage.getItem('flota')||'[]'); descansosData=JSON.parse(localStorage.getItem('descansos')||'[]'); ordenesData=JSON.parse(localStorage.getItem('lg_ordenes')||'[]'); incidentesData=JSON.parse(localStorage.getItem('lg_incidentes')||'[]'); fichadasData=JSON.parse(localStorage.getItem('lg_fichadas')||'[]'); if(incidentesPrimeraCarga){ incidentesPrimeraCarga=false; incidentesData.forEach(i=>{ if(!incidentesVistos.includes(i.id)) incidentesVistos.push(i.id); }); localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos)); } renderLogistica(); renderFlota(); renderTablaDescansos(descansosData); actualizarSelectChoferes(); renderDashboard(); renderOrdenes(); if(currentUser?.role==='chofer') renderVistaChofer(); if(currentUser && (currentUser.role==='admin'||currentUser.role==='operator')) mostrarBannerIncidentes(); if(currentUser?.role==='chofer') renderAsistenciaChofer(); if(document.getElementById('page-asistencia')?.classList.contains('active')) renderAsistencia(); } renderEditorHerramientas(); }
 
     // ---------- DASHBOARD ----------
     function renderDashboard(){ if(!document.getElementById('page-dashboard').classList.contains('active')) return; const dias=[]; for(let i=6;i>=0;i--){ let d=new Date(); d.setDate(d.getDate()-i); dias.push(d.toLocaleDateString('es-AR')); } const viajesPorDia=dias.map(f=>logRegistros.filter(r=>r.fecha===f).length); if(viajesChart) viajesChart.destroy(); viajesChart=new Chart(document.getElementById('viajesChart'),{type:'bar',data:{labels:dias,datasets:[{label:'Viajes',data:viajesPorDia,backgroundColor:'#58a6ff'}]},options:{responsive:true}}); const pedidosPorChofer={}; logRegistros.forEach(r=>{pedidosPorChofer[r.chofer]=(pedidosPorChofer[r.chofer]||0)+(r.pedidos||0);}); const top5=Object.entries(pedidosPorChofer).sort((a,b)=>b[1]-a[1]).slice(0,5); if(rankingChart) rankingChart.destroy(); rankingChart=new Chart(document.getElementById('rankingChart'),{type:'bar',data:{labels:top5.map(t=>t[0]),datasets:[{label:'Pedidos totales',data:top5.map(t=>t[1]),backgroundColor:'#3fb950'}]},options:{responsive:true}}); const limpios=flotaVehiculos.filter(v=>v.interior&&v.exterior&&v.caja).length; if(flotaChart) flotaChart.destroy(); flotaChart=new Chart(document.getElementById('flotaChart'),{type:'doughnut',data:{labels:['Al día','Pendientes'],datasets:[{data:[limpios,flotaVehiculos.length-limpios],backgroundColor:['#3fb950','#f85149']}]},options:{responsive:true}}); }
@@ -500,7 +529,7 @@
     window.cambiarFranja=(f)=>{ franjaActiva=f; renderLogistica(); };
     function actualizarStepper(){ if(!choferDetalle) return; const s=logSesiones[`${choferDetalle}|${franjaActiva}`]||{}; document.getElementById('detPedidos').value=s.pedidos||0; document.getElementById('detCajas').value=s.cajas||0; const pasos=['inicio','fin_c','salida','regreso']; const estado=obtenerEstado(choferDetalle); const badge=document.getElementById('detEstadoBadge'); const textos={nuevo:'⏳ En espera','en-carga':'📦 Cargando','en-ruta':'🚚 En viaje',completo:'✅ Finalizado'}; badge.textContent=textos[estado]; const siguiente=pasos.find(p=>!s[p]); pasos.forEach(p=>{ const step=document.getElementById(`step-${p}`); const time=document.getElementById(`st-${p}`); step.className='step'; if(s[p]){ step.classList.add('done'); time.textContent=s[p]; }else if(p===siguiente){ step.classList.add('next'); time.textContent='Toca para marcar'; }else time.textContent=''; }); }
     window.abrirDetalle=(nombre)=>{ choferDetalle=nombre; document.getElementById('detalleChofer').style.display='block'; document.getElementById('detNombre').textContent=nombre; actualizarStepper(); document.getElementById('detalleChofer').scrollIntoView({behavior:'smooth'}); };
-    function renderVistaChofer(){
+    function renderVistaChofer(){ renderAsistenciaChofer();
         if(!choferDetalle) return;
         document.getElementById('choferVistaNombre').textContent = choferDetalle;
         document.getElementById('choferVistaFranja').textContent = franjaActiva;
@@ -530,6 +559,93 @@
         hist.innerHTML = propios.length ? propios.map(r => `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:0.8rem;">${r.fecha} · ${r.franja} — 📦${r.pedidos||0} pedidos, ${r.cajas||0} cajas</div>`).join('') : '<div class="empty-state">Sin viajes registrados aún.</div>';
     }
 
+    // ── ASISTENCIA / FICHADAS ────────────────────────────────────────────
+    function renderAsistencia(){
+        const tabla = document.getElementById('tablaAsistencia');
+        const inputFecha = document.getElementById('asistFecha');
+        if (!tabla || !inputFecha) return;
+        if (!inputFecha.value) inputFecha.value = hoyISO();
+        const lunes = lunesDeSemana(inputFecha.value);
+        const dias = [];
+        for (let i = 0; i < 6; i++) { const d = new Date(lunes+'T00:00:00'); d.setDate(d.getDate()+i); dias.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')); }
+        const nombresDias = ['Lun','Mar','Mié','Jue','Vie','Sáb'];
+        const isAdmin = currentUser?.role === 'admin';
+        let html = '<thead><tr><th>Chofer</th>' + dias.map((f,i)=>`<th>${nombresDias[i]}<br><span style="font-size:0.65rem;color:var(--text-muted);">${fechaISOaDDMM(f)}</span></th>`).join('') + '<th>Total</th></tr></thead><tbody>';
+        if (!logChoferes.length) { tabla.innerHTML = html + '</tbody>'; return; }
+        logChoferes.forEach(nombre => {
+            let totalHoras = 0;
+            html += `<tr><td><strong>${nombre}</strong></td>`;
+            dias.forEach(f => {
+                const id = `${nombre}|${f}`;
+                const reg = fichadasData.find(x => x.id === id) || {};
+                const horas = diffHoras(reg.entrada, reg.salida);
+                totalHoras += horas;
+                if (isAdmin && fichadaEditando === id) {
+                    html += `<td style="min-width:90px;">
+                        <input type="time" class="form-input" id="fi-ent-${id}" value="${reg.entrada||''}" style="font-size:0.7rem;padding:2px;margin-bottom:2px;">
+                        <input type="time" class="form-input" id="fi-sal-${id}" value="${reg.salida||''}" style="font-size:0.7rem;padding:2px;margin-bottom:2px;">
+                        <div style="display:flex;gap:2px;"><button class="btn btn-sm btn-primary" style="padding:2px 6px;" onclick="guardarFichadaAdmin('${id}','${nombre}','${f}')">💾</button><button class="btn btn-sm btn-outline" style="padding:2px 6px;" onclick="cancelarFichada()">✕</button></div>
+                    </td>`;
+                } else {
+                    const contenido = (reg.entrada||reg.salida) ? `${reg.entrada||'—'}-${reg.salida||'—'}${horas?`<br><span style="font-size:0.6rem;color:var(--text-muted);">${horas.toFixed(1)}h</span>`:''}` : '<span style="color:var(--text-muted);">—</span>';
+                    html += `<td ${isAdmin?`style="cursor:pointer;" onclick="editarFichada('${id}')"`:''}>${contenido}</td>`;
+                }
+            });
+            const color = totalHoras>=48?'var(--accent2)':(totalHoras>=40?'var(--warn)':'var(--danger)');
+            html += `<td style="font-weight:600;color:${color};">${totalHoras.toFixed(1)}h<br><span style="font-size:0.6rem;color:var(--text-muted);">/ 48h</span></td></tr>`;
+        });
+        html += '</tbody>';
+        tabla.innerHTML = html;
+    }
+
+    window.editarFichada = (id) => { if (currentUser?.role !== 'admin') return toast('Solo admin','error'); fichadaEditando = id; renderAsistencia(); };
+    window.cancelarFichada = () => { fichadaEditando = null; renderAsistencia(); };
+    window.guardarFichadaAdmin = (id, nombre, fecha) => {
+        const entrada = document.getElementById(`fi-ent-${id}`).value;
+        const salida = document.getElementById(`fi-sal-${id}`).value;
+        guardarFichada(id, { chofer: nombre, fecha, entrada: entrada || null, salida: salida || null });
+        fichadaEditando = null;
+        if (firestoreReady) setTimeout(renderAsistencia, 300); else renderAsistencia();
+        toast('Fichada actualizada ✅', 'success');
+    };
+
+    function renderAsistenciaChofer(){
+        if (!choferDetalle) return;
+        const id = `${choferDetalle}|${hoyISO()}`;
+        const reg = fichadasData.find(x => x.id === id) || {};
+        const div = document.getElementById('asistChoferHoy');
+        if (div) div.innerHTML = `Hoy: Entrada <strong>${reg.entrada||'—'}</strong> · Salida <strong>${reg.salida||'—'}</strong>` + (reg.entrada && reg.salida ? ` · ${diffHoras(reg.entrada,reg.salida).toFixed(1)}h` : '');
+        const btnE = document.getElementById('btnMarcarEntrada');
+        const btnS = document.getElementById('btnMarcarSalida');
+        if (btnE) btnE.disabled = !!reg.entrada;
+        if (btnS) btnS.disabled = !reg.entrada || !!reg.salida;
+        const lunes = lunesDeSemana(hoyISO());
+        let total = 0;
+        for (let i = 0; i < 6; i++) {
+            const d = new Date(lunes+'T00:00:00'); d.setDate(d.getDate()+i);
+            const f = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+            const r = fichadasData.find(x => x.id === `${choferDetalle}|${f}`);
+            if (r) total += diffHoras(r.entrada, r.salida);
+        }
+        const sem = document.getElementById('asistChoferSemana');
+        if (sem) sem.textContent = `Esta semana: ${total.toFixed(1)}h / 48h`;
+    }
+
+    window.marcarEntrada = () => {
+        if (!choferDetalle) return;
+        const hora = new Date().toTimeString().slice(0,5);
+        guardarFichada(`${choferDetalle}|${hoyISO()}`, { chofer: choferDetalle, fecha: hoyISO(), entrada: hora });
+        renderAsistenciaChofer();
+        toast(`Entrada marcada: ${hora}`, 'success');
+    };
+    window.marcarSalida = () => {
+        if (!choferDetalle) return;
+        const hora = new Date().toTimeString().slice(0,5);
+        guardarFichada(`${choferDetalle}|${hoyISO()}`, { chofer: choferDetalle, fecha: hoyISO(), salida: hora });
+        renderAsistenciaChofer();
+        toast(`Salida marcada: ${hora}`, 'success');
+    };
+
     // ── COMPARTIR UBICACIÓN (sin historial) ────────────────────────────────
     function actualizarUbicacionChofer(){
         if (!navigator.geolocation || !choferDetalle) return;
@@ -550,6 +666,10 @@
         const est = document.getElementById('cvUbicacionEstado');
         if (est) est.textContent = '';
     }
+
+    document.getElementById('btnMarcarEntrada')?.addEventListener('click', marcarEntrada);
+    document.getElementById('btnMarcarSalida')?.addEventListener('click', marcarSalida);
+    document.getElementById('asistFecha')?.addEventListener('change', renderAsistencia);
 
     document.getElementById('cvCompartirUbicacion')?.addEventListener('change', (e) => {
         if (e.target.checked) {
@@ -746,6 +866,8 @@
     let franjasEditando=[];
     function renderFranjaEditorLista(){ const lista=document.getElementById('franjaEditorLista'); if(!lista) return; lista.innerHTML=franjasEditando.map((f,i)=>`<div style="display:flex; gap:6px; background:var(--surface); padding:6px 10px; border-radius:8px;"><span>${f}</span><button onclick="quitarFranjaEditor(${i})" style="background:none; border:none; color:var(--danger);">✕</button></div>`).join(''); }
     window.quitarFranjaEditor=(i)=>{ franjasEditando.splice(i,1); renderFranjaEditorLista(); };
+    let fichadasData = []; // {id, chofer, fecha(ISO YYYY-MM-DD), entrada, salida}
+    let fichadaEditando = null;
     let ubicacionInterval = null;
     let mapaVivo = null;
     let marcadoresVivo = {};
