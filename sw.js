@@ -3,7 +3,7 @@
 
 const CACHE_NAME = 'monarca-cache-v1';
 const ASSETS = [
-  './monarca.html',
+  './index.html',
   './manifest.json'
 ];
 

@@ -1,7 +1,7 @@
 {
   "name": "Centro de Control - Monarca",
   "short_name": "Monarca",
-  "start_url": "./monarca.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0d1117",
   "theme_color": "#0d1117",
