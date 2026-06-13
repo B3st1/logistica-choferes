@@ -123,6 +123,7 @@
     <button class="nav-tab" data-page="flota">🛻 Flota</button>
     <button class="nav-tab" data-page="ordenes">📋 Ordenes</button>
     <button class="nav-tab" data-page="incidentes">🚨 Incidentes</button>
+    <button class="nav-tab" data-page="mapa">🗺️ Mapa</button>
 </nav>
 
 <!-- VISTA CHOFER -->
@@ -159,6 +160,14 @@
         </div>
     </div>
     <div class="card">
+        <div class="section-title">📍 Ubicación</div>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="cvCompartirUbicacion" style="width:18px;height:18px;">
+            Compartir mi ubicación con el admin (cada 30s, no se guarda historial)
+        </label>
+        <div id="cvUbicacionEstado" style="font-size:0.75rem;color:var(--text-muted);margin-top:4px;"></div>
+    </div>
+    <div class="card">
         <div class="section-title">🚨 Reportar incidente</div>
         <textarea class="form-input" id="cvIncidenteMsg" rows="3" placeholder="Describí el problema (vehículo, dirección, cliente, etc.)"></textarea>
         <button class="btn btn-danger" id="btnEnviarIncidente" style="margin-top:8px;">🚨 Enviar reporte</button>
@@ -172,6 +181,16 @@
 <!-- INCIDENTES -->
 <div class="page" id="page-incidentes">
     <div class="card"><div class="section-title">🚨 Incidentes reportados</div><div id="listaIncidentes"></div></div>
+</div>
+
+<!-- MAPA EN VIVO -->
+<div class="page" id="page-mapa">
+    <div class="card">
+        <div class="section-title">🗺️ Choferes en vivo</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:8px;">Solo se muestra la posición actual de cada chofer mientras tiene la app abierta y activó "Compartir ubicación". No se guarda historial.</div>
+        <div class="map-container" style="display:block;"><div id="mapaVivo" style="height:400px;"></div></div>
+        <div id="listaUbicaciones" style="margin-top:10px;font-size:0.85rem;"></div>
+    </div>
 </div>
 
 <!-- DASHBOARD -->
@@ -392,6 +411,7 @@
     function checkAuth(){ const s=sessionStorage.getItem('currentUser'); if(s){ currentUser=JSON.parse(s); showApp(); initFirebase(); } else showLogin(); }
     function showLogin(){ document.getElementById('loginOverlay').style.display='flex'; document.getElementById('mainApp').style.display='none'; }
     function showApp(){ document.getElementById('loginOverlay').style.display='none'; document.getElementById('mainApp').style.display='flex'; document.getElementById('currentUser').textContent=currentUser.username; document.getElementById('currentRole').textContent=currentUser.role==='admin'?'Admin':(currentUser.role==='operator'?'Operador':(currentUser.role==='chofer'?'Chofer':'Solo lectura')); document.getElementById('btnAdminPanel').style.display=currentUser.role==='admin'?'inline-flex':'none';
+    document.querySelector('.nav-tab[data-page="mapa"]').style.display=(currentUser.role==='admin'||currentUser.role==='operator')?'':'none';
     if(currentUser.role==='chofer'){
         document.querySelector('.nav-tabs').style.display='none';
         document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -405,7 +425,7 @@
     applyPermissions(); }
     function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
     document.getElementById('btnLogin').addEventListener('click', async()=>{ const u=document.getElementById('loginUser').value.trim(), p=document.getElementById('loginPass').value; if(!u||!p){ document.getElementById('loginError').textContent='Completa todos los campos'; return; } const btn=document.getElementById('btnLogin'); btn.disabled=true; btn.textContent='Verificando...'; let found=null; try{ if(!db){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; } const doc=await db.collection('usuarios').doc(u).get(); if(doc.exists && doc.data().password===p) found=doc.data(); else{ const snap=await db.collection('usuarios').get(); if(snap.empty){ const base=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); for(const uu of base) await db.collection('usuarios').doc(uu.username).set(uu); const doc2=await db.collection('usuarios').doc(u).get(); if(doc2.exists && doc2.data().password===p) found=doc2.data(); } } }catch(e){ firestoreReady=false; const users=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); found=users.find(us=>us.username===u && us.password===p)||null; } btn.disabled=false; btn.textContent='Ingresar'; if(!found){ document.getElementById('loginError').textContent='Usuario o contraseña incorrectos'; return; } currentUser={username:found.username,role:found.role,chofer:found.chofer||null}; sessionStorage.setItem('currentUser',JSON.stringify(currentUser)); document.getElementById('loginError').textContent=''; showApp(); initFirebase(); });
-    document.getElementById('btnLogout').addEventListener('click',()=>{ sessionStorage.removeItem('currentUser'); currentUser=null; document.getElementById('mainApp').style.display='none'; showLogin(); });
+    document.getElementById('btnLogout').addEventListener('click',()=>{ if(currentUser?.role==='chofer') detenerCompartirUbicacion(); sessionStorage.removeItem('currentUser'); currentUser=null; document.getElementById('mainApp').style.display='none'; showLogin(); });
     document.getElementById('btnAdminPanel').addEventListener('click',()=>{ const page=document.getElementById('page-admin'); const isOpen=page.classList.contains('active'); document.querySelectorAll('.page').forEach(p=>{ p.classList.remove('active'); p.style.display=''; }); document.querySelectorAll('.nav-tab[data-page]').forEach(t=>t.classList.remove('active')); if(!isOpen){ page.classList.add('active'); page.style.display='block'; renderUserList(); }else{ document.getElementById('page-dashboard').classList.add('active'); document.getElementById('page-dashboard').style.display='block'; document.querySelector('.nav-tab[data-page="dashboard"]').classList.add('active'); } });
     function renderUserList(){ const users=getUsers(); const list=document.getElementById('userList'); if(!users.length){ list.innerHTML='<div class="empty-state">Sin usuarios</div>'; return; } const esAdmin=currentUser && currentUser.role==='admin'; list.innerHTML=users.map(u=>`<div style="display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid var(--border);"><span>👤 ${u.username}</span><span class="badge">${u.role}</span>${esAdmin && u.username!=='admin'?`<button class="btn btn-sm btn-outline" onclick="changeUserRole('${u.username}')">Cambiar rol</button>`:''}${esAdmin?`<button class="btn btn-sm btn-outline" onclick="changeUserPassword('${u.username}')">🔑</button>`:''}${esAdmin && u.username!=='admin'?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.username}')">🗑</button>`:''}</div>`).join(''); }
     window.changeUserRole=(username)=>{ if(currentUser?.role!=='admin') return toast('Solo admin','error'); if(username==='admin') return toast('No se puede cambiar rol del admin','error'); const users=getUsers(); const user=users.find(u=>u.username===username); if(!user) return; const roles=['admin','operator','viewer']; user.role=roles[(roles.indexOf(user.role)+1)%roles.length]; if(firestoreReady) saveUserFirestore(user); else saveUsers(users); renderUserList(); toast(`Rol de ${username} cambiado a ${user.role}`); };
@@ -441,7 +461,7 @@
             if (tab.dataset.page === 'flota') renderFlota();
             if (tab.dataset.page === 'descansos') { cargarDescansos(); actualizarSelectChoferes(); }
             if (tab.dataset.page === 'dashboard') renderDashboard();
-            if (tab.dataset.page === 'ordenes') renderOrdenes(); if (tab.dataset.page === 'incidentes') renderIncidentes();
+            if (tab.dataset.page === 'ordenes') renderOrdenes(); if (tab.dataset.page === 'incidentes') renderIncidentes(); if (tab.dataset.page === 'mapa') initMapaVivo();
         });
     });
     document.querySelectorAll('.nav-tab[data-subpage]').forEach(btn => {
@@ -508,6 +528,68 @@
         const propios = logRegistros.filter(r => r.chofer === choferDetalle).slice(-5).reverse();
         const hist = document.getElementById('choferVistaHistorial');
         hist.innerHTML = propios.length ? propios.map(r => `<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:0.8rem;">${r.fecha} · ${r.franja} — 📦${r.pedidos||0} pedidos, ${r.cajas||0} cajas</div>`).join('') : '<div class="empty-state">Sin viajes registrados aún.</div>';
+    }
+
+    // ── COMPARTIR UBICACIÓN (sin historial) ────────────────────────────────
+    function actualizarUbicacionChofer(){
+        if (!navigator.geolocation || !choferDetalle) return;
+        navigator.geolocation.getCurrentPosition(pos => {
+            const data = { lat: pos.coords.latitude, lng: pos.coords.longitude, hora: new Date().toTimeString().slice(0,5), chofer: choferDetalle };
+            if (firestoreReady) db.collection('ubicaciones').doc(choferDetalle).set(data);
+            const est = document.getElementById('cvUbicacionEstado');
+            if (est) est.textContent = `Última actualización: ${data.hora}`;
+        }, err => {
+            const est = document.getElementById('cvUbicacionEstado');
+            if (est) est.textContent = 'No se pudo obtener la ubicación (revisá permisos del GPS)';
+        }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    }
+
+    function detenerCompartirUbicacion(){
+        if (ubicacionInterval) { clearInterval(ubicacionInterval); ubicacionInterval = null; }
+        if (firestoreReady && choferDetalle) db.collection('ubicaciones').doc(choferDetalle).delete();
+        const est = document.getElementById('cvUbicacionEstado');
+        if (est) est.textContent = '';
+    }
+
+    document.getElementById('cvCompartirUbicacion')?.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            actualizarUbicacionChofer();
+            ubicacionInterval = setInterval(actualizarUbicacionChofer, 30000);
+            document.getElementById('cvUbicacionEstado').textContent = 'Activando...';
+        } else {
+            detenerCompartirUbicacion();
+        }
+    });
+
+    // ── MAPA EN VIVO (admin/operador) ───────────────────────────────────
+    function initMapaVivo(){
+        if (!mapaVivo) {
+            mapaVivo = L.map('mapaVivo').setView([ORIGEN.lat, ORIGEN.lng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapaVivo);
+            L.marker([ORIGEN.lat, ORIGEN.lng]).addTo(mapaVivo).bindPopup('Monarca - Av. Colón 1150');
+            setTimeout(()=>mapaVivo.invalidateSize(), 200);
+        } else {
+            setTimeout(()=>mapaVivo.invalidateSize(), 200);
+        }
+        if (firestoreReady) {
+            db.collection('ubicaciones').onSnapshot(snap => {
+                const activos = new Set();
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    activos.add(doc.id);
+                    const pos = [d.lat, d.lng];
+                    if (marcadoresVivo[doc.id]) {
+                        marcadoresVivo[doc.id].setLatLng(pos).setPopupContent(`🚚 ${d.chofer} — ${d.hora}`);
+                    } else {
+                        marcadoresVivo[doc.id] = L.marker(pos, { title: d.chofer }).addTo(mapaVivo).bindPopup(`🚚 ${d.chofer} — ${d.hora}`);
+                    }
+                });
+                // Quitar marcadores de choferes que dejaron de compartir
+                Object.keys(marcadoresVivo).forEach(id => { if (!activos.has(id)) { mapaVivo.removeLayer(marcadoresVivo[id]); delete marcadoresVivo[id]; } });
+                const lista = document.getElementById('listaUbicaciones');
+                if (lista) lista.innerHTML = activos.size ? [...activos].map(id => { const m = marcadoresVivo[id]; const p = m.getLatLng(); return `<div>🚚 ${id} — actualizado ${m.getPopup().getContent().split('—')[1].trim()}</div>`; }).join('') : '<div class="empty-state">Ningún chofer está compartiendo su ubicación.</div>';
+            });
+        }
     }
 
     window.marcarPasoChofer = (tipo) => {
@@ -664,6 +746,9 @@
     let franjasEditando=[];
     function renderFranjaEditorLista(){ const lista=document.getElementById('franjaEditorLista'); if(!lista) return; lista.innerHTML=franjasEditando.map((f,i)=>`<div style="display:flex; gap:6px; background:var(--surface); padding:6px 10px; border-radius:8px;"><span>${f}</span><button onclick="quitarFranjaEditor(${i})" style="background:none; border:none; color:var(--danger);">✕</button></div>`).join(''); }
     window.quitarFranjaEditor=(i)=>{ franjasEditando.splice(i,1); renderFranjaEditorLista(); };
+    let ubicacionInterval = null;
+    let mapaVivo = null;
+    let marcadoresVivo = {};
     let limpiarTurnoConfirmar = false;
     document.getElementById('btnLimpiarTurno').addEventListener('click', () => {
         if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'operator')) return toast('Sin permisos', 'error');
