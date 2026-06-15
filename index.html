@@ -226,8 +226,12 @@
             <label style="font-size:0.8rem;color:var(--text-muted);">Mes:</label>
             <input type="month" class="form-input" id="pedidosMes" style="max-width:160px;">
             <button class="btn btn-sm btn-outline" id="btnEditarFranjasPedidos">✏️ Editar franjas</button>
-            <button class="btn btn-sm btn-outline" id="btnCargarJunio2026">📋 Cargar datos de Junio 2026</button>
+            <input type="number" class="form-input" id="csvAnio" placeholder="Año" style="max-width:80px;" value="2026">
+            <input type="file" accept=".csv,text/csv" id="csvPedidosInput" style="display:none;">
+            <button class="btn btn-sm btn-outline" id="btnImportarCSV">📁 Importar CSV</button>
+            <button class="btn btn-sm btn-outline" id="btnExportarCSVPedidos">⬇ Exportar CSV</button>
         </div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:8px;">El CSV debe tener la misma forma que tu hoja: una fila "HORA" con las fechas (ej. 1.6, 2.6...), filas con cada franja (9:00, 11:00...) y una fila "KWY APROX". Indicá el año correspondiente antes de importar.</div>
         <div id="franjaPedidosEditor" style="display:none; margin-bottom:12px; background:var(--surface2); border-radius:12px; padding:14px;">
             <div id="franjaPedidosEditorLista" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;"></div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -369,6 +373,7 @@
     let estadosOrdenOpciones = JSON.parse(localStorage.getItem('lg_ordenes_estados') || '["⏳ Pendiente","📦 Preparando","🚚 En reparto","✅ Entregado","❌ Cancelado"]');
     let ordenesData = [];
     let incidentesData = []; let incidentesVistos = JSON.parse(localStorage.getItem('lg_incidentes_vistos')||'[]'); let incidentesPrimeraCarga = true;
+    let appJustStarted = true; setTimeout(()=>{ appJustStarted = false; }, 5000);
     let rankingExclusiones = JSON.parse(localStorage.getItem('lg_ranking_exclusiones')||'[]');
     let rankingAjustes = JSON.parse(localStorage.getItem('lg_ranking_ajustes')||'{}');
     let rankingEditando = null;
@@ -414,6 +419,7 @@
 
     function mostrarBannerIncidentes(){
         if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'operator')) return;
+        if (appJustStarted) return;
         const noLeidos = incidentesData.filter(i => !incidentesVistos.includes(i.id));
         const banner = document.getElementById('incidenteBanner');
         if (!noLeidos.length) { banner.style.display = 'none'; return; }
@@ -490,7 +496,7 @@
         document.getElementById('page-chofer-vista').style.display='none';
     }
     applyPermissions(); cargarClima(); if(!window._climaInterval) window._climaInterval=setInterval(cargarClima, 30*60*1000); }
-    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnEditarFranjasPedidos'||btn.id==='btnGuardarFranjasPedidos'||btn.id==='btnAgregarFranjaPedidos'||btn.id==='btnExportarCSV'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarFranjasPedidos'||btn.id==='btnGuardarFranjasPedidos')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass):not(#asistFecha):not(#pedidosMes), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
+    function applyPermissions(){ const role=currentUser.role; if(role==='chofer') return; const canEdit=role==='admin'||role==='operator'; const canEditChoferes=role==='admin'; const canEditFranjas=role==='admin'; const canEditHerramientas=role==='admin'; const canDeleteVehiculo=role==='admin'; document.querySelectorAll('button').forEach(btn=>{ if(btn.id==='btnLogin'||btn.id==='btnLogout'||btn.id==='btnAdminPanel'||btn.classList.contains('nav-tab')||btn.classList.contains('franja-btn')||btn.id==='btnCerrarDetalle'||btn.id==='btnEditarFranjas'||btn.id==='btnGuardarFranjas'||btn.id==='btnLimpiarTurno'||btn.id==='btnEditarHerramientas'||btn.id==='btnGuardarHerramientas'||btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden'||btn.id==='btnEditarFranjasPedidos'||btn.id==='btnGuardarFranjasPedidos'||btn.id==='btnAgregarFranjaPedidos'||btn.id==='btnExportarCSV'||btn.id==='btnExportarCSVPedidos'||btn.id==='mostrarImportBtn'||btn.id==='btnProcesarImport'||btn.id==='btnAgregarDireccion'||btn.id==='btnGenerarRuta'||btn.id==='btnLimpiarRuta') return; if(!canEdit) btn.disabled=true; else if(!canEditChoferes && (btn.id==='btnAgregarChofer' || btn.closest('#listaChoferesABM'))) btn.disabled=true; else if(!canEditHerramientas && btn.id==='btnGuardarHerramientas') btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarEstadosOrden'||btn.id==='btnGuardarEstadosOrden')) btn.disabled=true; else if(currentUser.role!=='admin' && (btn.id==='btnEditarFranjasPedidos'||btn.id==='btnGuardarFranjasPedidos')) btn.disabled=true; else if(!canDeleteVehiculo && btn.textContent.includes('🗑')) btn.disabled=true; else btn.disabled=false; }); if(role==='viewer') document.querySelectorAll('input:not(#loginUser):not(#loginPass):not(#asistFecha):not(#pedidosMes), select:not(#filtroChoferDescanso), textarea').forEach(i=>i.disabled=true); else document.querySelectorAll('input, select, textarea').forEach(i=>i.disabled=false); if(role==='operator'){ if(document.getElementById('nuevoChofer')) document.getElementById('nuevoChofer').disabled=true; if(document.getElementById('btnAgregarChofer')) document.getElementById('btnAgregarChofer').disabled=true; if(document.getElementById('btnEditarFranjas')) document.getElementById('btnEditarFranjas').disabled=true; if(document.getElementById('btnEditarHerramientas')) document.getElementById('btnEditarHerramientas').disabled=true; } }
     document.getElementById('btnLogin').addEventListener('click', async()=>{ const u=document.getElementById('loginUser').value.trim(), p=document.getElementById('loginPass').value; if(!u||!p){ document.getElementById('loginError').textContent='Completa todos los campos'; return; } const btn=document.getElementById('btnLogin'); btn.disabled=true; btn.textContent='Verificando...'; let found=null; try{ if(!db){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; } const doc=await db.collection('usuarios').doc(u).get(); if(doc.exists && doc.data().password===p) found=doc.data(); else{ const snap=await db.collection('usuarios').get(); if(snap.empty){ const base=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); for(const uu of base) await db.collection('usuarios').doc(uu.username).set(uu); const doc2=await db.collection('usuarios').doc(u).get(); if(doc2.exists && doc2.data().password===p) found=doc2.data(); } } }catch(e){ firestoreReady=false; const users=JSON.parse(localStorage.getItem('app_users')||JSON.stringify(DEFAULT_USERS)); found=users.find(us=>us.username===u && us.password===p)||null; } btn.disabled=false; btn.textContent='Ingresar'; if(!found){ document.getElementById('loginError').textContent='Usuario o contraseña incorrectos'; return; } currentUser={username:found.username,role:found.role,chofer:found.chofer||null}; sessionStorage.setItem('currentUser',JSON.stringify(currentUser)); document.getElementById('loginError').textContent=''; showApp(); initFirebase(); });
     document.getElementById('btnLogout').addEventListener('click',()=>{ if(currentUser?.role==='chofer') detenerCompartirUbicacion(); sessionStorage.removeItem('currentUser'); currentUser=null; document.getElementById('mainApp').style.display='none'; showLogin(); });
     document.getElementById('btnAdminPanel').addEventListener('click',()=>{ const page=document.getElementById('page-admin'); const isOpen=page.classList.contains('active'); document.querySelectorAll('.page').forEach(p=>{ p.classList.remove('active'); p.style.display=''; }); document.querySelectorAll('.nav-tab[data-page]').forEach(t=>t.classList.remove('active')); if(!isOpen){ page.classList.add('active'); page.style.display='block'; renderUserList(); }else{ document.getElementById('page-dashboard').classList.add('active'); document.getElementById('page-dashboard').style.display='block'; document.querySelector('.nav-tab[data-page="dashboard"]').classList.add('active'); } });
@@ -549,7 +555,7 @@
         function initFirebase(){ if(firestoreReady||db) return; try{ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); firestoreReady=true; setConnectionStatus(true); }catch(e){ console.warn(e); firestoreReady=false; setConnectionStatus(false); } if(firestoreReady){ db.collection('choferes').onSnapshot(snap=>{ logChoferes=[]; snap.forEach(d=>logChoferes.push(d.data().nombre)); renderLogistica(); actualizarSelectChoferes(); renderDashboard(); }); db.collection('registros').orderBy('fecha','desc').onSnapshot(snap=>{ logRegistros=[]; snap.forEach(d=>logRegistros.push({id:d.id,...d.data()})); if(document.getElementById('subpage-log-historial')?.classList.contains('active')) renderHistorial(); if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); if(document.getElementById('subpage-log-reportes')?.classList.contains('active')) renderReportes(); renderDashboard(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('sesiones').onSnapshot(snap=>{ logSesiones={}; const fhoy=hoy(); snap.forEach(d=>{ const data=d.data(); if(data.fecha===fhoy) logSesiones[d.id]=data; }); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('franjas').doc('actual').onSnapshot(doc=>{ if(doc.exists) franjas=doc.data().franjas||["09:00","11:00","13:00","15:00","17:00","19:00"]; autoSeleccionarFranja(franjas); renderLogistica(); if(currentUser?.role==='chofer') renderVistaChofer(); }); db.collection('flota').onSnapshot(snap=>{ flotaVehiculos=[]; snap.forEach(d=>flotaVehiculos.push({id:d.id,...d.data()})); renderFlota(); renderDashboard(); }); db.collection('descansos').orderBy('fecha','desc').onSnapshot(snap=>{ descansosData=[]; snap.forEach(d=>descansosData.push({id:d.id,...d.data()})); renderTablaDescansos(descansosData); }); db.collection('ordenes').orderBy('fecha','desc').onSnapshot(snap=>{ ordenesData=[]; snap.forEach(d=>ordenesData.push({id:d.id,...d.data()})); if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('estadosOrden').onSnapshot(doc=>{ if(doc.exists && doc.data().opciones) estadosOrdenOpciones=doc.data().opciones; if(document.getElementById('page-ordenes')?.classList.contains('active')) renderOrdenes(); }); db.collection('config').doc('franjasPedidos').onSnapshot(doc=>{ if(doc.exists && doc.data().franjas) FRANJAS_PEDIDOS=doc.data().franjas; if(document.getElementById('page-pedidos')?.classList.contains('active')) renderPedidos(); });
     db.collection('pedidos_diarios').onSnapshot(snap => { pedidosData = []; snap.forEach(d => pedidosData.push({id:d.id, ...d.data()})); if(document.getElementById('page-pedidos')?.classList.contains('active')) renderPedidos(); });
     db.collection('fichadas').onSnapshot(snap => { fichadasData = []; snap.forEach(d => fichadasData.push({id:d.id, ...d.data()})); if(document.getElementById('page-asistencia')?.classList.contains('active')) renderAsistencia(); if(currentUser?.role==='chofer') renderAsistenciaChofer(); });
-    db.collection('config').doc('ranking').onSnapshot(doc=>{ if(doc.exists){ rankingExclusiones=doc.data().exclusiones||[]; rankingAjustes=doc.data().ajustes||{}; } if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); }); db.collection('incidentes').get().then(snapInicial=>{
+    db.collection('config').doc('ranking').onSnapshot(doc=>{ if(doc.exists){ rankingExclusiones=doc.data().exclusiones||[]; rankingAjustes=doc.data().ajustes||{}; } if(document.getElementById('subpage-log-ranking')?.classList.contains('active')) renderRanking(); }); db.collection('incidentes').get({source:'server'}).then(snapInicial=>{
         // Sellar como vistos todos los incidentes que ya existían ANTES de activar las alertas en vivo
         snapInicial.forEach(d => { if(!incidentesVistos.includes(d.id)) incidentesVistos.push(d.id); });
         localStorage.setItem('lg_incidentes_vistos', JSON.stringify(incidentesVistos));
@@ -638,9 +644,9 @@
         tabla.innerHTML = html;
         document.getElementById('pedidosResumen').innerHTML = `
             <div>📦 Total pedidos del mes: <strong>${totalMes}</strong></div>
-            <div>🚚 Total TKWY del mes: <strong>${kwyMes}</strong></div>
-            <div>📊 Total general (Sumatoria): <strong>${sumatoriaMes}</strong></div>
-            <div>📈 Promedio diario: <strong>${dias.length ? (totalMes/dias.length).toFixed(1) : '0'}</strong></div>
+            <div>🚚 Total TKWY del mes (retiro en sucursal): <strong>${kwyMes}</strong></div>
+            <div>📊 Total general (Sumatoria = Total + TKWY): <strong>${sumatoriaMes}</strong></div>
+            <div>📈 Promedio diario (sobre Sumatoria): <strong>${dias.length ? (sumatoriaMes/dias.length).toFixed(1) : '0'}</strong></div>
         `;
     }
     window.guardarPedido = (fecha, campo, valor) => {
@@ -653,32 +659,67 @@
         else localStorage.setItem('lg_pedidos', JSON.stringify(pedidosData));
         renderPedidos();
     };
-    window.cargarDatosJunio2026 = () => {
-        if (currentUser?.role!=='admin') return toast('Solo admin','error');
-        const seed = {
-            '2026-06-01':{'09:00':92,'11:00':94,'13:00':74,'15:30':70,'18:00':42,kwy:68},
-            '2026-06-02':{'09:00':93,'11:00':73,'13:00':110,'15:30':102,'18:00':48,kwy:96},
-            '2026-06-03':{'09:00':123,'11:00':97,'13:00':76,'15:30':86,'18:00':56,kwy:82},
-            '2026-06-04':{'09:00':91,'11:00':83,'13:00':72,'15:30':74,'18:00':50,kwy:70},
-            '2026-06-05':{'09:00':121,'11:00':105,'13:00':78,'15:30':72,'18:00':50,kwy:84},
-            '2026-06-06':{'09:00':106,'11:00':88,'13:00':77,'15:30':65,'18:00':30,kwy:41},
-            '2026-06-08':{'09:00':92,'11:00':59,'13:00':65,'15:30':70,'18:00':41,kwy:46},
-            '2026-06-09':{'09:00':100,'11:00':95,'13:00':83,'15:30':80,'18:00':51,kwy:56},
-            '2026-06-10':{'09:00':108,'11:00':96,'13:00':72,'15:30':50,'18:00':57,kwy:66},
-            '2026-06-11':{'09:00':97,'11:00':90,'13:00':76,'15:30':55,'18:00':59,kwy:51},
-            '2026-06-12':{'09:00':99,'11:00':75,'13:00':77,'15:30':63,'18:00':47,kwy:51},
-            '2026-06-13':{'09:00':101,'11:00':75,'13:00':81,'15:30':77,'18:00':34,kwy:41}
+
+// ── IMPORTAR / EXPORTAR CSV (Pedidos) ───────────────────────────────
+    function csvParseLine(line){ return line.split(',').map(c => c.trim().replace(/^"|"$/g,'')); }
+
+    window.importarCSVPedidos = (file) => {
+        const anio = parseInt(document.getElementById('csvAnio').value) || new Date().getFullYear();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const lines = e.target.result.split(/\r?\n/).filter(l => l.trim());
+            if (!lines.length) return toast('Archivo vacío','error');
+            const filas = lines.map(csvParseLine);
+            const headerRow = filas[0];
+            const fechas = headerRow.slice(1).map(val => {
+                const m = val.match(/(\d{1,2})\.(\d{1,2})/);
+                if (!m) return null;
+                const dia = m[1].padStart(2,'0'), mes = m[2].padStart(2,'0');
+                return `${anio}-${mes}-${dia}`;
+            });
+            let filasOK = 0;
+            for (let r = 1; r < filas.length; r++) {
+                const fila = filas[r];
+                const etiqueta = (fila[0]||'').trim().toUpperCase();
+                let campo = null;
+                if (etiqueta.includes('KWY') || etiqueta.includes('TKWY')) campo = 'kwy';
+                else {
+                    const norm = etiqueta.replace(/^(\d):/, '0$1:');
+                    if (FRANJAS_PEDIDOS.includes(norm)) campo = norm;
+                    else if (FRANJAS_PEDIDOS.includes(etiqueta)) campo = etiqueta;
+                }
+                if (!campo) continue;
+                filasOK++;
+                for (let c = 1; c < fila.length; c++) {
+                    const fecha = fechas[c-1];
+                    if (!fecha) continue;
+                    const valor = parseInt(fila[c]);
+                    if (isNaN(valor)) continue;
+                    let reg = pedidosData.find(x => x.id === fecha);
+                    if (!reg) { reg = { id: fecha }; pedidosData.push(reg); }
+                    reg[campo] = valor;
+                    if (firestoreReady) db.collection('pedidos_diarios').doc(fecha).set({[campo]:valor}, {merge:true});
+                }
+            }
+            if (!filasOK) return toast('No se encontraron filas reconocidas (franjas o KWY)','error');
+            if (!firestoreReady) localStorage.setItem('lg_pedidos', JSON.stringify(pedidosData));
+            renderPedidos();
+            toast(`CSV importado ✅ (${filasOK} filas de datos)`,'success');
         };
-        Object.entries(seed).forEach(([fecha,vals])=>{
-            let reg = pedidosData.find(x=>x.id===fecha);
-            if (!reg) { reg = { id: fecha }; pedidosData.push(reg); }
-            Object.assign(reg, vals);
-            if (firestoreReady) db.collection('pedidos_diarios').doc(fecha).set(vals, {merge:true});
+        reader.readAsText(file);
+    };
+
+    window.exportarCSVPedidos = () => {
+        const mesInput = document.getElementById('pedidosMes');
+        const dias = diasDelMes(mesInput.value || hoyISO().slice(0,7));
+        const filas = [];
+        filas.push(['HORA', ...dias.map(f => { const d = new Date(f+'T00:00:00'); return `${d.getDate()}.${d.getMonth()+1}`; })]);
+        FRANJAS_PEDIDOS.forEach(franja => {
+            filas.push([franja, ...dias.map(f => { const reg = pedidosData.find(x=>x.id===f)||{}; return reg[franja] ?? ''; })]);
         });
-        if (!firestoreReady) localStorage.setItem('lg_pedidos', JSON.stringify(pedidosData));
-        document.getElementById('pedidosMes').value = '2026-06';
-        renderPedidos();
-        toast('Datos de Junio 2026 cargados ✅','success');
+        filas.push(['KWY APROX', ...dias.map(f => { const reg = pedidosData.find(x=>x.id===f)||{}; return reg.kwy ?? ''; })]);
+        const csv = filas.map(f => f.join(',')).join('\n');
+        const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download = `pedidos_${mesInput.value||hoyISO().slice(0,7)}.csv`; a.click();
     };
 
     // ── ASISTENCIA / FICHADAS ────────────────────────────────────────────
@@ -793,7 +834,9 @@
     document.getElementById('btnMarcarSalida')?.addEventListener('click', marcarSalida);
     document.getElementById('asistFecha')?.addEventListener('change', renderAsistencia);
     document.getElementById('pedidosMes')?.addEventListener('change', renderPedidos);
-    document.getElementById('btnCargarJunio2026')?.addEventListener('click', cargarDatosJunio2026);
+    document.getElementById('btnImportarCSV')?.addEventListener('click', () => { if (currentUser?.role!=='admin' && currentUser?.role!=='operator') return toast('Sin permisos','error'); document.getElementById('csvPedidosInput').click(); });
+    document.getElementById('csvPedidosInput')?.addEventListener('change', (e) => { const f = e.target.files[0]; if (f) importarCSVPedidos(f); e.target.value=''; });
+    document.getElementById('btnExportarCSVPedidos')?.addEventListener('click', exportarCSVPedidos);
 
     document.getElementById('cvCompartirUbicacion')?.addEventListener('change', (e) => {
         if (e.target.checked) {
