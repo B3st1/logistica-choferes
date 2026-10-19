@@ -1253,6 +1253,26 @@
       header { flex-direction: column; align-items: stretch; gap: 12px; }
       .header-pills { justify-content: space-between; }
     }
+  
+    /* ===== Diálogos propios (reemplazan prompt/confirm) ===== */
+    .dlg-ov { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 16px; animation: modalFade 0.2s ease; }
+    .dlg-box { background: #0f172a; border: 1px solid var(--border-accent); border-radius: var(--radius-xl); padding: 22px;
+      width: 540px; max-width: 100%; max-height: 92vh; overflow: auto; outline: none;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.7), 0 0 24px rgba(6,182,212,0.2); animation: modalPop 0.3s cubic-bezier(0.16,1,0.3,1); }
+    .dlg-box h3 { color: #fff; font-size: 1.05rem; margin-bottom: 8px; }
+    .dlg-msg { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
+    .dlg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; margin-top: 10px; }
+    .dlg-grid .full { grid-column: 1 / -1; }
+    .dlg-err { color: #fda4af; font-size: 0.8rem; min-height: 1.2em; margin-top: 4px; }
+    .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+    .btn-primary-c { background: var(--cyan); color: #04242e; font-weight: 700; }
+    .btn-danger { background: #e11d48; color: #fff; font-weight: 700; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    select.form-input option { background: #0f172a; color: #fff; }
+    .card-tools { display: flex; align-items: center; gap: 2px; }
+    .row-actions { white-space: nowrap; }
+    @media (max-width: 560px) { .dlg-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -1285,11 +1305,11 @@
         <span>En vivo • Sucursal Colón 1150</span>
       </div>
 
-      <div class="user-pill" onclick="toast('Operador: Despacho central')">
-        <div class="user-avatar">OP</div>
+      <div class="user-pill" onclick="abrirUsuarios()" title="Usuarios y accesos">
+        <div class="user-avatar" id="userAvatar">OP</div>
         <div>
-          <div style="font-size: 0.78rem; font-weight: 700; color: #fff;">Operador Despacho</div>
-          <div style="font-size: 0.65rem; color: var(--text-muted);">Administrador</div>
+          <div id="userName" style="font-size: 0.78rem; font-weight: 700; color: #fff;">Operador Despacho</div>
+          <div id="userRole" style="font-size: 0.65rem; color: var(--text-muted);">Administrador</div>
         </div>
       </div>
 
@@ -1689,9 +1709,17 @@
           </div>
         </div>
 
-        <button class="btn btn-secondary" onclick="exportarCSV()">
-          <i class="fa-solid fa-file-csv"></i> Exportar CSV
-        </button>
+        <div class="panel-actions">
+          <button class="btn btn-secondary" onclick="agregarViaje()">
+            <i class="fa-solid fa-plus"></i> Agregar viaje
+          </button>
+          <button class="btn btn-danger-soft" onclick="borrarHistorial()">
+            <i class="fa-solid fa-trash"></i> Borrar historial
+          </button>
+          <button class="btn btn-secondary" onclick="exportarCSV()">
+            <i class="fa-solid fa-file-csv"></i> Exportar CSV
+          </button>
+        </div>
       </div>
 
       <div class="table-container">
@@ -1708,6 +1736,7 @@
               <th>T. Carga</th>
               <th>T. Recorrido</th>
               <th>Estado</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="historialTableBody"></tbody>
@@ -1930,6 +1959,9 @@
               <div class="panel-title">Asistencia del día</div>
               <div class="panel-subtitle">Tolerancia de ingreso: 10 minutos · los ausentes no entran en la asignación automática</div>
             </div>
+          </div>
+          <div class="panel-actions">
+            <button class="btn btn-secondary" onclick="agregarAsistencia()"><i class="fa-solid fa-user-plus"></i> Agregar persona</button>
           </div>
         </div>
         <div class="table-container">
@@ -2321,6 +2353,7 @@
       t.classList.add('show');
       clearTimeout(toastTimeout);
       toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
+      try { guardarEstado(); } catch (e) { /* aún no inicializado */ }
     }
 
     const tip = document.createElement('div');
@@ -2361,20 +2394,22 @@
       toast(`Visualizando franja horaria: ${hora} hs`);
     }
 
-    function agregarFranja() {
-      const hora = (prompt('Ingrese nueva franja (HH:MM):', '21:00') || '').trim();
-      if (!hora) return;
-      if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hora)) { toast('Formato inválido. Usá HH:MM, por ejemplo 21:00'); return; }
-      if (FRANJAS.includes(hora)) { toast(`La franja ${hora} ya existe`); return; }
-      const btn = document.createElement('button');
-      btn.className = 'franja-btn';
-      btn.innerHTML = `<i class="fa-regular fa-clock"></i> ${hora} hs`;
-      btn.onclick = () => seleccionarFranja(btn, hora);
-      const container = document.getElementById('franjaContainer');
-      container.insertBefore(btn, container.lastElementChild);
-      FRANJAS.push(hora);
+    async function agregarFranja() {
+      const r = await dlg({
+        titulo: 'Nueva franja horaria',
+        campos: [{ id: 'hora', label: 'Hora (HH:MM)', value: '21:00', full: true, req: true }],
+        validar: v => {
+          if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v.hora)) return 'Formato inválido. Usá HH:MM, por ejemplo 21:00';
+          if (FRANJAS.includes(v.hora)) return `La franja ${v.hora} ya existe`;
+          return null;
+        }
+      });
+      if (!r) return;
+      FRANJAS.push(r.hora);
       FRANJAS.sort();
-      toast(`Franja ${hora} hs creada con éxito`);
+      renderFranjas();
+      guardarEstado();
+      toast(`Franja ${r.hora} hs creada con éxito`);
     }
 
     // =====================================================================
@@ -2421,7 +2456,7 @@
       });
     }
 
-    function handleStep(el) {
+    async function handleStep(el) {
       const card = el.closest('.driver-card');
       const steps = $$('.step-box', card);
       const idx = steps.indexOf(el);
@@ -2429,7 +2464,7 @@
 
       if (el.classList.contains('done')) {
         const extra = idx < n - 1 ? ' También se borran los pasos siguientes.' : '';
-        if (!confirm(`¿Restablecer "${PASOS[idx]}"?${extra}`)) return;
+        if (!(await dlgConfirm(`¿Restablecer "${PASOS[idx]}"?${extra}`, { ok: 'Restablecer' }))) return;
         steps.forEach((s, i) => { if (i >= idx) s.classList.remove('done'); });
         normalizarStepper(card);
         sincronizarPedidos(card);
@@ -2468,8 +2503,8 @@
       renderHistorial();
     }
 
-    function limpiarTurno() {
-      if (!confirm('¿Deseas reiniciar los estados y pedidos de la franja actual?')) return;
+    async function limpiarTurno() {
+      if (!(await dlgConfirm('¿Deseas reiniciar los estados y pedidos de la franja actual?', { titulo: 'Limpiar turno', ok: 'Reiniciar', peligro: true }))) return;
       $$('.driver-card').forEach(card => {
         $$('.step-box', card).forEach(s => s.classList.remove('done'));
         normalizarStepper(card);
@@ -2477,6 +2512,7 @@
       });
       recalcKPIs();
       refreshBadges();
+      guardarEstado();
       toast('Turno reiniciado a "En Espera"');
     }
 
@@ -2516,52 +2552,30 @@
     // =====================================================================
     //  NUEVO CHOFER
     // =====================================================================
-    function crearChoferPrompt() {
-      const nombre = (prompt('Nombre y Apellido del chofer:') || '').trim();
-      if (!nombre) return;
-      if (choferes().includes(nombre)) { toast(`${nombre} ya está en el turno`); return; }
-      const vehiculo = (prompt('Vehículo y patente:', 'Renault Kangoo • AB 123 CD') || 'Utilitario').trim();
+    async function crearChoferPrompt() {
+      const r = await dlg({
+        titulo: 'Nuevo chofer',
+        campos: [
+          { id: 'nombre', label: 'Nombre y apellido', full: true, req: true },
+          { id: 'modelo', label: 'Vehículo (modelo)', value: 'Renault Kangoo' },
+          { id: 'patente', label: 'Patente', placeholder: 'AB 123 CD' }
+        ],
+        validar: v => nombreChoferLibre(v.nombre, null)
+      });
+      if (!r) return;
+      const nombre = r.nombre;
 
-      const div = document.createElement('div');
-      div.className = 'driver-card';
-      div.dataset.driver = nombre;
-      div.dataset.franja = FRANJA_ACTUAL;
-      div.innerHTML = `
-        <div class="driver-card-header">
-          <div class="driver-identity">
-            <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-            <div>
-              <div class="driver-name">${esc(nombre)}</div>
-              <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> ${esc(vehiculo)}</div>
-            </div>
-          </div>
-          <span class="status-badge waiting">EN ESPERA</span>
-        </div>
-        <div class="mini-stepper">
-          ${['📦 Inicio', '✅ Carga', '🚚 Salida', '🏁 Regreso'].map(t => `
-          <div class="step-box" onclick="handleStep(this)">
-            <span class="step-title">${t}</span>
-            <span class="step-val">—</span>
-          </div>`).join('')}
-        </div>
-        <div class="driver-card-footer">
-          <div class="cargo-info">
-            <span><i class="fa-solid fa-box"></i> Pedidos: <strong>0</strong></span>
-            <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>0</strong></span>
-          </div>
-          <button class="btn-manage" onclick="abrirGestionModal(this)">
-            <i class="fa-regular fa-pen-to-square"></i> Gestionar
-          </button>
-        </div>`;
+      const div = crearTarjetaDOM({ nombre, franja: FRANJA_ACTUAL, pedidos: 0, cajas: 0 });
       document.getElementById('driverCardsContainer').appendChild(div);
-      normalizarStepper(div);
 
       if (!CHOFER_ORDEN.includes(nombre)) CHOFER_ORDEN.push(nombre);
-      const [modelo, patente] = vehiculo.split('•').map(s => s.trim());
-      FLOTA.push({ modelo: modelo || vehiculo, patente: patente || 'S/P', chofer: nombre, odometro: 0, kmInicio: 0, ultimoService: 0, taller: false });
-      if (!ASISTENCIA.some(a => a.nombre === nombre)) ASISTENCIA.push({ nombre, turno: FRANJA_ACTUAL, ingreso: null, egreso: null, estado: 'Sin marcar' });
+      const modelo = r.modelo, patente = normPatente(r.patente);
+      if (modelo || patente) asignarOCrearVehiculo(nombre, modelo, patente);
+      if (!ASISTENCIA.some(a => igual(a.nombre, nombre))) ASISTENCIA.push({ nombre, turno: FRANJA_ACTUAL, ingreso: null, egreso: null, estado: 'Sin marcar' });
+      sincronizarVehiculosTarjetas();
 
       recalcKPIs();
+      guardarEstado();
       toast(`Chofer ${nombre} asignado a la franja ${FRANJA_ACTUAL}`);
     }
 
@@ -2570,8 +2584,8 @@
     // =====================================================================
     function renderHistorial() {
       const body = $('#historialTableBody');
-      if (!VIAJES.length) { body.innerHTML = '<tr class="empty-row"><td colspan="10">Todavía no hay viajes cerrados hoy</td></tr>'; return; }
-      body.innerHTML = VIAJES.map(v => {
+      if (!VIAJES.length) { body.innerHTML = '<tr class="empty-row"><td colspan="11">Todavía no hay viajes cerrados hoy</td></tr>'; return; }
+      body.innerHTML = VIAJES.map((v, i) => {
         const tc = toMin(v.fin) - toMin(v.inicio);
         const tr = toMin(v.regreso) - toMin(v.salida);
         const sobre = tc > ESTANDAR_CARGA;
@@ -2588,6 +2602,10 @@
           <td>${sobre
             ? '<span class="st st-prep"><i class="fa-solid fa-triangle-exclamation"></i> Carga lenta</span>'
             : '<span class="status-ok"><i class="fa-solid fa-check"></i> OK</span>'}</td>
+          <td class="row-actions">
+            <button class="btn btn-secondary btn-xs" onclick="editarViaje(${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn btn-danger-soft btn-xs" onclick="borrarViaje(${i})" title="Borrar"><i class="fa-solid fa-trash"></i></button>
+          </td>
         </tr>`;
       }).join('');
     }
@@ -3199,7 +3217,8 @@
         <span class="pill"><i class="fa-solid fa-truck-fast" style="color:#38bdf8"></i> ${cnt('En ruta')} en ruta</span>
         <span class="pill"><i class="fa-solid fa-circle-check" style="color:#34d399"></i> ${cnt('Disponible') + cnt('En carga')} en base</span>
         <span class="pill"><i class="fa-solid fa-screwdriver-wrench" style="color:#fda4af"></i> ${cnt('En taller')} en taller</span>
-        <span class="pill"><i class="fa-solid fa-road" style="color:#c4b5fd"></i> ${fmtNum(kmHoy)} km hoy</span>`;
+        <span class="pill"><i class="fa-solid fa-road" style="color:#c4b5fd"></i> ${fmtNum(kmHoy)} km hoy</span>
+        <button class="btn btn-secondary btn-xs" onclick="agregarVehiculo()"><i class="fa-solid fa-plus"></i> Agregar vehículo</button>`;
 
       $('#flotaGrid').innerHTML = FLOTA.map((v, i) => {
         const e = estados[i];
@@ -3234,6 +3253,8 @@
           </div>
           <div class="fleet-actions">
             <button class="btn btn-secondary btn-xs" onclick="registrarKm(${i})"><i class="fa-solid fa-gauge-high"></i> Registrar km</button>
+            <button class="btn btn-secondary btn-xs" onclick="editarVehiculo(${i})"><i class="fa-solid fa-pen"></i> Editar</button>
+            <button class="btn btn-danger-soft btn-xs" onclick="eliminarVehiculo(${i})" title="Eliminar vehículo"><i class="fa-solid fa-trash"></i></button>
             <button class="btn btn-secondary btn-xs" onclick="toggleTaller(${i})"><i class="fa-solid fa-screwdriver-wrench"></i> ${v.taller ? 'Volver a operativo' : 'Enviar a taller'}</button>
             ${resta <= 0 || nivel === 'warn' ? `<button class="btn btn-secondary btn-xs" onclick="registrarService(${i})"><i class="fa-solid fa-oil-can"></i> Service hecho</button>` : ''}
           </div>
@@ -3241,15 +3262,25 @@
       }).join('');
     }
 
-    function registrarKm(i) {
-      const v = FLOTA[i];
-      const val = prompt(`Odómetro actual de ${v.patente} (km):`, v.odometro);
-      if (val == null) return;
-      const km = parseInt(String(val).replace(/\D/g, ''));
-      if (isNaN(km)) { toast('Ingresá un número válido'); return; }
-      if (km < v.kmInicio) { toast(`No puede ser menor al inicio del día (${fmtNum(v.kmInicio)} km)`); return; }
+    async function registrarKm(i) {
+      const v = FLOTA[i]; if (!v) return;
+      const leer = x => parseInt(String(x).replace(/\D/g, ''));
+      const r = await dlg({
+        titulo: `Registrar km · ${v.patente}`,
+        mensaje: `Inicio del día: ${fmtNum(v.kmInicio)} km. El odómetro no puede ser menor.`,
+        campos: [{ id: 'km', label: 'Odómetro actual (km)', value: v.odometro, num: true, full: true, req: true }],
+        validar: x => {
+          const km = leer(x.km);
+          if (isNaN(km)) return 'Ingresá un número válido';
+          if (km < v.kmInicio) return `No puede ser menor al inicio del día (${fmtNum(v.kmInicio)} km)`;
+          return null;
+        }
+      });
+      if (!r) return;
+      const km = leer(r.km);
       v.odometro = km;
       renderFlota();
+      guardarEstado();
       toast(`${v.patente}: ${fmtNum(km - v.kmInicio)} km recorridos hoy`);
     }
 
@@ -3302,6 +3333,8 @@
             ${a.ingreso && !a.egreso ? `<button class="btn btn-secondary btn-xs" onclick="marcarEgreso(${i})"><i class="fa-solid fa-right-from-bracket"></i> Egreso</button>` : ''}
             ${!a.ingreso && a.estado !== 'Ausente' && a.estado !== 'Franco' ? `<button class="btn btn-danger-soft btn-xs" onclick="marcarAusente(${i})"><i class="fa-solid fa-user-xmark"></i> Ausente</button>` : ''}
             ${a.ingreso || a.estado === 'Ausente' ? `<button class="btn btn-secondary btn-xs" onclick="resetAsistencia(${i})" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>` : ''}
+            <button class="btn btn-secondary btn-xs" onclick="editarAsistencia(${i})" title="Editar"><i class="fa-solid fa-pen"></i></button>
+            <button class="btn btn-danger-soft btn-xs" onclick="eliminarAsistencia(${i})" title="Quitar"><i class="fa-solid fa-trash"></i></button>
           </td>
         </tr>`;
       }).join('');
@@ -3332,10 +3365,681 @@
     }
 
     // =====================================================================
+    //  DIÁLOGOS PROPIOS (reemplazan prompt() y confirm())
+    //  Dentro de un iframe con sandbox (panel embebido) el navegador bloquea
+    //  prompt/confirm y devuelve null/false sin avisar: por eso "no dejaba"
+    //  agregar, editar ni borrar. Estos diálogos viven dentro de la página.
+    // =====================================================================
+    function dlg(opts) {
+      return new Promise(resolve => {
+        const campos = opts.campos || [];
+        const ov = document.createElement('div');
+        ov.className = 'dlg-ov';
+        const campoHTML = c => {
+          const id = 'dlgf_' + c.id;
+          let input;
+          if (c.type === 'select') {
+            input = `<select class="form-input" id="${id}">${(c.options || []).map(o =>
+              `<option value="${esc(o.v)}"${String(o.v) === String(c.value ?? '') ? ' selected' : ''}>${esc(o.t)}</option>`).join('')}</select>`;
+          } else {
+            input = `<input class="form-input" id="${id}" type="${c.type === 'password' ? 'password' : 'text'}" value="${esc(c.value ?? '')}" placeholder="${esc(c.placeholder || '')}" autocomplete="${c.type === 'password' ? 'new-password' : 'off'}"${c.num ? ' inputmode="numeric"' : ''}>`;
+          }
+          return `<div class="form-group${c.full ? ' full' : ''}"><label for="${id}">${esc(c.label)}</label>${input}</div>`;
+        };
+        ov.innerHTML = `<div class="dlg-box" tabindex="-1" role="dialog" aria-modal="true">
+          <h3>${esc(opts.titulo || '')}</h3>
+          ${opts.mensaje ? `<div class="dlg-msg">${esc(opts.mensaje)}</div>` : ''}
+          ${campos.length ? `<div class="dlg-grid">${campos.map(campoHTML).join('')}</div>` : ''}
+          <div class="dlg-err" data-err></div>
+          <div class="dlg-actions">
+            <button type="button" class="btn btn-secondary" data-a="no">${esc(opts.cancelar || 'Cancelar')}</button>
+            <button type="button" class="btn ${opts.peligro ? 'btn-danger' : 'btn-primary-c'}" data-a="ok">${esc(opts.ok || 'Guardar')}</button>
+          </div>
+        </div>`;
+        const errEl = ov.querySelector('[data-err]');
+        const cerrar = val => { ov.remove(); resolve(val); };
+        const aceptar = () => {
+          const vals = {};
+          campos.forEach(c => {
+            const el = ov.querySelector('#dlgf_' + c.id);
+            vals[c.id] = c.type === 'password' ? el.value : el.value.trim();
+          });
+          for (const c of campos) {
+            if (c.req && !vals[c.id]) { errEl.textContent = `Completá: ${c.label}`; ov.querySelector('#dlgf_' + c.id).focus(); return; }
+          }
+          const err = opts.validar ? opts.validar(vals) : null;
+          if (err) { errEl.textContent = err; return; }
+          cerrar(vals);
+        };
+        ov.addEventListener('click', e => {
+          if (e.target === ov) { cerrar(null); return; }
+          const a = e.target.closest('[data-a]');
+          if (!a) return;
+          if (a.dataset.a === 'ok') aceptar(); else cerrar(null);
+        });
+        ov.addEventListener('keydown', e => {
+          if (e.key === 'Escape') { e.stopPropagation(); cerrar(null); }
+          else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); aceptar(); }
+        });
+        document.body.appendChild(ov);
+        const primero = ov.querySelector('input,select');
+        (primero || ov.querySelector('.dlg-box')).focus();
+        if (primero && typeof primero.select === 'function') primero.select();
+      });
+    }
+
+    async function dlgConfirm(mensaje, o = {}) {
+      return (await dlg({ titulo: o.titulo || 'Confirmar', mensaje, ok: o.ok || 'Aceptar', peligro: !!o.peligro })) !== null;
+    }
+
+    // Helpers de formato / validación
+    const aNum = s => { const n = parseInt(String(s ?? '').replace(/\D/g, '')); return isNaN(n) ? 0 : n; };
+    const okHora = h => /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(h || '').trim());
+    const normHora = h => { h = String(h || '').trim(); return h && /^\d:/.test(h) ? '0' + h : h; };
+    const normPatente = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    const igual = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+    // =====================================================================
+    //  USUARIOS Y CLAVES
+    //  (Se guardan en este navegador. No es seguridad real de servidor:
+    //   sirve para identificar al operador, no para proteger datos.)
+    // =====================================================================
+    function hashClave(s) {
+      s = 'monarca|' + s;
+      let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (let i = 0, ch; i < s.length; i++) {
+        ch = s.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+      }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+    }
+    let USUARIOS = [{ id: 'u-admin', usuario: 'admin', nombre: 'Operador Despacho', rol: 'Administrador', clave: hashClave('admin') }];
+    let SESION = 'u-admin';
+    const ROLES = ['Administrador', 'Operador'];
+    const userActual = () => USUARIOS.find(u => u.id === SESION) || USUARIOS.find(u => u.rol === 'Administrador') || USUARIOS[0];
+    const esAdmin = () => { const u = userActual(); return !!u && u.rol === 'Administrador'; };
+    const iniciales = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+    function renderUsuarioHeader() {
+      const u = userActual(); if (!u) return;
+      $('#userAvatar').textContent = iniciales(u.nombre);
+      $('#userName').textContent = u.nombre;
+      $('#userRole').textContent = u.rol;
+    }
+
+    function abrirUsuarios() {
+      if (document.getElementById('usrOv')) return;
+      const ov = document.createElement('div');
+      ov.className = 'dlg-ov'; ov.id = 'usrOv';
+      ov.innerHTML = `<div class="dlg-box" style="width:720px" tabindex="-1">
+        <div class="modal-header">
+          <h3 style="margin:0">Usuarios y accesos</h3>
+          <button class="close-btn" data-a="cerrar" title="Cerrar">&times;</button>
+        </div>
+        <div class="dlg-msg" id="usrInfo"></div>
+        <div class="table-container"><table>
+          <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Clave</th><th>Acciones</th></tr></thead>
+          <tbody id="usrBody"></tbody>
+        </table></div>
+        <div class="dlg-actions" style="justify-content:space-between;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary-c" id="usrNew" data-a="nuevo"><i class="fa-solid fa-user-plus"></i> Nuevo usuario</button>
+            <button class="btn btn-secondary" data-a="cambiar"><i class="fa-solid fa-right-left"></i> Cambiar de usuario</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-danger-soft" id="usrReset" data-a="reset"><i class="fa-solid fa-rotate-left"></i> Restablecer datos</button>
+            <button class="btn btn-secondary" data-a="cerrar">Cerrar</button>
+          </div>
+        </div></div>`;
+      ov.addEventListener('click', e => {
+        if (e.target === ov) { ov.remove(); return; }
+        const a = e.target.closest('[data-a]'); if (!a) return;
+        const k = a.dataset.a;
+        if (k === 'cerrar') ov.remove();
+        else if (k === 'nuevo') nuevoUsuario();
+        else if (k === 'cambiar') cambiarUsuario();
+        else if (k === 'reset') restablecerDatos();
+      });
+      ov.addEventListener('keydown', e => { if (e.key === 'Escape' && e.target === ov.querySelector('.dlg-box')) ov.remove(); });
+      document.body.appendChild(ov);
+      renderUsuarios();
+      ov.querySelector('.dlg-box').focus();
+    }
+
+    function renderUsuarios() {
+      const body = document.getElementById('usrBody'); if (!body) return;
+      const admin = esAdmin(), yo = userActual();
+      $('#usrInfo').innerHTML = `Sesión actual: <strong>${esc(yo.nombre)}</strong> (${esc(yo.rol)}). ` +
+        (admin ? 'Podés crear, editar y eliminar usuarios.' : 'Solo un Administrador puede crear, editar o eliminar usuarios. Cambiá de usuario para continuar.');
+      $('#usrNew').disabled = !admin;
+      $('#usrReset').disabled = !admin;
+      body.innerHTML = USUARIOS.map(u => `<tr>
+        <td><strong>${esc(u.nombre)}</strong>${u.id === yo.id ? ' <span class="tag-franja">vos</span>' : ''}</td>
+        <td>${esc(u.usuario)}</td>
+        <td>${esc(u.rol)}</td>
+        <td>${u.clave ? '••••••' : 'Sin clave'}</td>
+        <td class="row-actions">${admin
+          ? `<button class="btn btn-secondary btn-xs" onclick="editarUsuario('${esc(u.id)}')"><i class="fa-solid fa-pen"></i> Editar</button>
+             <button class="btn btn-danger-soft btn-xs" onclick="eliminarUsuario('${esc(u.id)}')" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`
+          : '—'}</td>
+      </tr>`).join('');
+    }
+
+    function validarUsuario(v, idActual, nuevo) {
+      if (v.nombre.length < 2) return 'Ingresá el nombre completo';
+      if (!/^[a-z0-9._-]{3,20}$/i.test(v.usuario)) return 'El usuario debe tener entre 3 y 20 caracteres (letras, números, punto o guion)';
+      if (USUARIOS.some(u => u.id !== idActual && igual(u.usuario, v.usuario))) return 'Ese nombre de usuario ya existe';
+      if (nuevo || v.clave) {
+        if (v.clave.length < 4) return 'La clave debe tener al menos 4 caracteres';
+        if (v.clave !== v.clave2) return 'Las claves no coinciden';
+      }
+      return null;
+    }
+
+    async function nuevoUsuario() {
+      if (!esAdmin()) { toast('Solo un Administrador puede crear usuarios'); return; }
+      const r = await dlg({
+        titulo: 'Nuevo usuario',
+        campos: [
+          { id: 'nombre', label: 'Nombre y apellido', full: true, req: true },
+          { id: 'usuario', label: 'Usuario (para ingresar)', req: true },
+          { id: 'rol', label: 'Rol', type: 'select', value: 'Operador', options: ROLES.map(x => ({ v: x, t: x })) },
+          { id: 'clave', label: 'Clave', type: 'password', req: true },
+          { id: 'clave2', label: 'Repetir clave', type: 'password', req: true }
+        ],
+        validar: v => validarUsuario(v, null, true)
+      });
+      if (!r) return;
+      USUARIOS.push({ id: 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1000), usuario: r.usuario, nombre: r.nombre, rol: r.rol, clave: hashClave(r.clave) });
+      renderUsuarios(); guardarEstado();
+      toast(`Usuario "${r.usuario}" creado`);
+    }
+
+    async function editarUsuario(id) {
+      if (!esAdmin()) { toast('Solo un Administrador puede editar usuarios'); return; }
+      const u = USUARIOS.find(x => x.id === id); if (!u) return;
+      const r = await dlg({
+        titulo: `Editar usuario · ${u.usuario}`,
+        mensaje: 'Dejá la clave en blanco para mantener la actual.',
+        campos: [
+          { id: 'nombre', label: 'Nombre y apellido', value: u.nombre, full: true, req: true },
+          { id: 'usuario', label: 'Usuario', value: u.usuario, req: true },
+          { id: 'rol', label: 'Rol', type: 'select', value: u.rol, options: ROLES.map(x => ({ v: x, t: x })) },
+          { id: 'clave', label: 'Nueva clave (opcional)', type: 'password' },
+          { id: 'clave2', label: 'Repetir nueva clave', type: 'password' }
+        ],
+        validar: v => {
+          const e = validarUsuario(v, u.id, false); if (e) return e;
+          if (u.rol === 'Administrador' && v.rol !== 'Administrador' && USUARIOS.filter(x => x.rol === 'Administrador').length < 2)
+            return 'Tiene que quedar al menos un Administrador';
+          return null;
+        }
+      });
+      if (!r) return;
+      Object.assign(u, { nombre: r.nombre, usuario: r.usuario, rol: r.rol });
+      if (r.clave) u.clave = hashClave(r.clave);
+      renderUsuarios(); renderUsuarioHeader(); guardarEstado();
+      toast(`Usuario "${u.usuario}" actualizado`);
+    }
+
+    async function eliminarUsuario(id) {
+      if (!esAdmin()) { toast('Solo un Administrador puede eliminar usuarios'); return; }
+      const u = USUARIOS.find(x => x.id === id); if (!u) return;
+      if (u.id === userActual().id) { toast('No podés eliminar el usuario con el que estás trabajando'); return; }
+      if (u.rol === 'Administrador' && USUARIOS.filter(x => x.rol === 'Administrador').length < 2) { toast('Tiene que quedar al menos un Administrador'); return; }
+      if (!(await dlgConfirm(`¿Eliminar al usuario "${u.usuario}" (${u.nombre})?`, { ok: 'Eliminar', peligro: true }))) return;
+      USUARIOS = USUARIOS.filter(x => x.id !== id);
+      renderUsuarios(); guardarEstado();
+      toast(`Usuario "${u.usuario}" eliminado`);
+    }
+
+    async function cambiarUsuario() {
+      const r = await dlg({
+        titulo: 'Cambiar de usuario',
+        campos: [
+          { id: 'usuario', label: 'Usuario', full: true, req: true },
+          { id: 'clave', label: 'Clave', type: 'password', full: true }
+        ],
+        ok: 'Ingresar',
+        validar: v => {
+          const u = USUARIOS.find(x => igual(x.usuario, v.usuario));
+          return (u && u.clave === hashClave(v.clave)) ? null : 'Usuario o clave incorrectos';
+        }
+      });
+      if (!r) return;
+      const u = USUARIOS.find(x => igual(x.usuario, r.usuario));
+      SESION = u.id;
+      renderUsuarioHeader(); renderUsuarios(); guardarEstado();
+      toast(`Sesión iniciada: ${u.nombre} (${u.rol})`);
+    }
+
+    let _NO_GUARDAR = false;
+    async function restablecerDatos() {
+      if (!esAdmin()) return;
+      if (!(await dlgConfirm('Se borran TODOS los datos guardados (usuarios, vehículos, historial, choferes) y se vuelve a los datos de ejemplo.', { titulo: 'Restablecer datos', ok: 'Restablecer todo', peligro: true }))) return;
+      _NO_GUARDAR = true;
+      try { localStorage.removeItem(LS_KEY); } catch (e) { /* sin almacenamiento */ }
+      location.reload();
+    }
+
+    // =====================================================================
+    //  GUARDADO AUTOMÁTICO (para que lo editado no se pierda al recargar)
+    // =====================================================================
+    const LS_KEY = 'monarca_estado_v2';
+
+    function snapshotTarjetas() {
+      return $$('.driver-card').map(c => ({
+        nombre: c.dataset.driver, franja: c.dataset.franja,
+        pasos: $$('.step-box', c).map(s => ({ done: s.classList.contains('done'), val: $('.step-val', s).textContent.trim() })),
+        ...leerCarga(c)
+      }));
+    }
+
+    function guardarEstado() {
+      if (_NO_GUARDAR) return;
+      try {
+        const st = {
+          v: 2, franjas: FRANJAS, franjaActual: FRANJA_ACTUAL, flota: FLOTA, asistencia: ASISTENCIA, viajes: VIAJES,
+          orden: CHOFER_ORDEN, usuarios: USUARIOS, sesion: SESION, tarjetas: snapshotTarjetas(),
+          pedidos: PEDIDOS.map(p => ({ id: p.id, franja: p.franja, chofer: p.chofer, estado: p.estado, motivo: p.motivo, intentos: p.intentos, cajas: p.cajas }))
+        };
+        localStorage.setItem(LS_KEY, JSON.stringify(st));
+      } catch (e) { /* almacenamiento no disponible: sigue funcionando en memoria */ }
+    }
+
+    function renderFranjas() {
+      const c = document.getElementById('franjaContainer'); if (!c) return;
+      c.innerHTML = FRANJAS.map(h => `<button class="franja-btn${h === FRANJA_ACTUAL ? ' active' : ''}" onclick="seleccionarFranja(this, '${esc(h)}')"><i class="fa-regular fa-clock"></i> ${esc(h)} hs</button>`).join('') +
+        `<button class="franja-btn add" onclick="agregarFranja()"><i class="fa-solid fa-plus"></i> Nueva</button>`;
+    }
+
+    function htmlTarjeta(nombre, pedidos, cajas) {
+      return `
+        <div class="driver-card-header">
+          <div class="driver-identity">
+            <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
+            <div>
+              <div class="driver-name">${esc(nombre)}</div>
+              <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Sin vehículo asignado</div>
+            </div>
+          </div>
+          <span class="status-badge waiting">EN ESPERA</span>
+        </div>
+        <div class="mini-stepper">
+          ${['📦 Inicio', '✅ Carga', '🚚 Salida', '🏁 Regreso'].map(t => `
+          <div class="step-box" onclick="handleStep(this)">
+            <span class="step-title">${t}</span>
+            <span class="step-val">—</span>
+          </div>`).join('')}
+        </div>
+        <div class="driver-card-footer">
+          <div class="cargo-info">
+            <span><i class="fa-solid fa-box"></i> Pedidos: <strong>${pedidos}</strong></span>
+            <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>${cajas}</strong></span>
+          </div>
+          <button class="btn-manage" onclick="abrirGestionModal(this)">
+            <i class="fa-regular fa-pen-to-square"></i> Gestionar
+          </button>
+        </div>`;
+    }
+
+    function crearTarjetaDOM(d) {
+      const div = document.createElement('div');
+      div.className = 'driver-card';
+      div.dataset.driver = d.nombre;
+      div.dataset.franja = d.franja || FRANJA_ACTUAL;
+      div.innerHTML = htmlTarjeta(d.nombre, d.pedidos || 0, d.cajas || 0);
+      const steps = $$('.step-box', div);
+      (d.pasos || []).forEach((p, i) => {
+        if (steps[i] && p.done) { steps[i].classList.add('done'); $('.step-val', steps[i]).textContent = p.val || '—'; }
+      });
+      normalizarStepper(div);
+      mejorarTarjeta(div);
+      return div;
+    }
+
+    // Agrega a cada tarjeta los botones Editar (nombre/vehículo) y Eliminar
+    function mejorarTarjeta(card) {
+      const foot = $('.driver-card-footer', card);
+      if (!foot || $('.card-tools', foot)) return;
+      const manage = $('.btn-manage', foot);
+      const tools = document.createElement('div');
+      tools.className = 'card-tools';
+      tools.innerHTML = `<button class="btn-manage" title="Editar nombre y vehículo" onclick="editarChofer(this)"><i class="fa-solid fa-pen"></i></button>
+        <button class="btn-manage" style="color:#fda4af" title="Eliminar chofer" onclick="eliminarChofer(this)"><i class="fa-solid fa-trash"></i></button>`;
+      foot.insertBefore(tools, manage);
+      tools.insertBefore(manage, tools.lastElementChild);
+    }
+
+    function restaurarEstado() {
+      let st = null;
+      try { st = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch (e) { st = null; }
+      if (!st || st.v !== 2 || !Array.isArray(st.tarjetas) || !Array.isArray(st.flota)) return false;
+      // Se arma todo primero y recién después se aplica, para no dejar datos a medias si algo falla
+      const frag = document.createDocumentFragment();
+      st.tarjetas.forEach(d => frag.appendChild(crearTarjetaDOM(d)));
+      const nuevos = {
+        franjas: Array.isArray(st.franjas) && st.franjas.length ? st.franjas : FRANJAS,
+        flota: st.flota,
+        asistencia: Array.isArray(st.asistencia) ? st.asistencia : ASISTENCIA,
+        viajes: Array.isArray(st.viajes) ? st.viajes : VIAJES,
+        orden: Array.isArray(st.orden) ? st.orden : CHOFER_ORDEN.slice(),
+        usuarios: Array.isArray(st.usuarios) && st.usuarios.length ? st.usuarios : USUARIOS
+      };
+      FRANJAS = nuevos.franjas;
+      FRANJA_ACTUAL = FRANJAS.includes(st.franjaActual) ? st.franjaActual : FRANJAS[0];
+      FLOTA = nuevos.flota; ASISTENCIA = nuevos.asistencia; VIAJES = nuevos.viajes; USUARIOS = nuevos.usuarios;
+      SESION = st.sesion || SESION;
+      CHOFER_ORDEN.splice(0, CHOFER_ORDEN.length, ...nuevos.orden);
+      const byId = new Map(PEDIDOS.map(p => [p.id, p]));
+      (st.pedidos || []).forEach(o => { const p = byId.get(o.id); if (p) Object.assign(p, o); });
+      const cont = document.getElementById('driverCardsContainer');
+      cont.innerHTML = '';
+      cont.appendChild(frag);
+      renderFranjas();
+      return true;
+    }
+
+    // Cada tarjeta muestra el vehículo que figura en la Flota para ese chofer
+    function sincronizarVehiculosTarjetas() {
+      $$('.driver-card').forEach(card => {
+        const v = FLOTA.find(x => x.chofer === card.dataset.driver);
+        const el = $('.driver-vehicle', card);
+        if (el) el.innerHTML = `<i class="fa-solid fa-van-shuttle"></i> ${v ? esc(v.modelo) + ' • ' + esc(v.patente) : 'Sin vehículo asignado'}`;
+      });
+    }
+
+    function nombreChoferLibre(nombre, viejo) {
+      if (nombre.length < 2) return 'Ingresá el nombre y apellido';
+      if (choferes().some(c => c !== viejo && igual(c, nombre))) return `Ya existe un chofer llamado "${nombre}"`;
+      if (viejo && ASISTENCIA.some(a => a.nombre !== viejo && igual(a.nombre, nombre))) return `Ya hay una persona llamada "${nombre}" en Asistencia`;
+      return null;
+    }
+
+    function asignarOCrearVehiculo(chofer, modelo, patente) {
+      let v = patente ? FLOTA.find(x => !x.chofer && normPatente(x.patente) === patente) : null;
+      if (v) { if (modelo) v.modelo = modelo; v.chofer = chofer; return v; }
+      v = { modelo: modelo || 'Utilitario', patente: patente || 'S/P', chofer, odometro: 0, kmInicio: 0, ultimoService: 0, taller: false };
+      FLOTA.push(v);
+      return v;
+    }
+
+    // Renombra a un chofer en TODOS lados para que no queden datos huérfanos
+    function renombrarChofer(viejo, nuevo) {
+      const card = $$('.driver-card').find(c => c.dataset.driver === viejo);
+      if (card) { card.dataset.driver = nuevo; const n = $('.driver-name', card); if (n) n.textContent = nuevo; }
+      const i = CHOFER_ORDEN.indexOf(viejo); if (i >= 0) CHOFER_ORDEN[i] = nuevo;
+      FLOTA.forEach(v => { if (v.chofer === viejo) v.chofer = nuevo; });
+      ASISTENCIA.forEach(a => { if (a.nombre === viejo) a.nombre = nuevo; });
+      PEDIDOS.forEach(p => { if (p.chofer === viejo) p.chofer = nuevo; });
+      VIAJES.forEach(v => { if (v.chofer === viejo) v.chofer = nuevo; });
+      [RUTA_ORDEN, RUTA_AHORRO].forEach(obj => {
+        Object.keys(obj).forEach(k => {
+          const [fr, ch] = k.split('|');
+          if (ch === viejo) { obj[fr + '|' + nuevo] = obj[k]; delete obj[k]; }
+        });
+      });
+      if (MAPA_FOCO === viejo) MAPA_FOCO = nuevo;
+    }
+
+    async function editarChofer(btn) {
+      const card = btn.closest('.driver-card'); if (!card) return;
+      const viejo = card.dataset.driver;
+      const veh = FLOTA.find(x => x.chofer === viejo);
+      const r = await dlg({
+        titulo: 'Editar chofer',
+        campos: [
+          { id: 'nombre', label: 'Nombre y apellido', value: viejo, full: true, req: true },
+          { id: 'modelo', label: 'Vehículo (modelo)', value: veh ? veh.modelo : '' },
+          { id: 'patente', label: 'Patente', value: veh ? veh.patente : '' }
+        ],
+        validar: v => {
+          const e = nombreChoferLibre(v.nombre, viejo); if (e) return e;
+          const p = normPatente(v.patente);
+          if (p && p !== 'S/P' && FLOTA.some(x => x !== veh && normPatente(x.patente) === p && x.chofer)) return 'Esa patente ya está asignada a otro chofer';
+          return null;
+        }
+      });
+      if (!r) return;
+      if (r.nombre !== viejo) renombrarChofer(viejo, r.nombre);
+      const modelo = r.modelo, patente = normPatente(r.patente);
+      const actual = FLOTA.find(x => x.chofer === r.nombre);
+      if (actual) {
+        if (modelo) actual.modelo = modelo;
+        if (patente) actual.patente = patente;
+      } else if (modelo || patente) {
+        asignarOCrearVehiculo(r.nombre, modelo, patente);
+      }
+      sincronizarVehiculosTarjetas();
+      recalcKPIs(); refrescarVistaActual(); guardarEstado();
+      toast(`Chofer actualizado: ${r.nombre}`);
+    }
+
+    async function eliminarChofer(btn) {
+      const card = btn.closest('.driver-card'); if (!card) return;
+      const nombre = card.dataset.driver;
+      if (!(await dlgConfirm(`¿Eliminar a ${nombre} del turno? Sus pedidos sin entregar quedan sin asignar. El historial de viajes se conserva.`, { ok: 'Eliminar', peligro: true }))) return;
+      card.remove();
+      const i = CHOFER_ORDEN.indexOf(nombre); if (i >= 0) CHOFER_ORDEN.splice(i, 1);
+      FLOTA.forEach(v => { if (v.chofer === nombre) v.chofer = null; });
+      PEDIDOS.forEach(p => {
+        if (p.chofer === nombre && !['Entregado', 'No entregado', 'Reprogramado'].includes(p.estado)) { p.chofer = null; p.estado = 'Pendiente'; }
+      });
+      if (MAPA_FOCO === nombre) MAPA_FOCO = null;
+      recalcKPIs(); refreshBadges(); refrescarVistaActual(); guardarEstado();
+      toast(`${nombre} eliminado del turno`);
+    }
+
+    // =====================================================================
+    //  FLOTA: EDITAR / AGREGAR / ELIMINAR VEHÍCULOS Y PATENTES
+    // =====================================================================
+    function formVehiculo(titulo, v, idx) {
+      return dlg({
+        titulo,
+        campos: [
+          { id: 'modelo', label: 'Modelo / vehículo', value: v.modelo, full: true, req: true },
+          { id: 'patente', label: 'Patente', value: v.patente, req: true },
+          { id: 'chofer', label: 'Chofer asignado', type: 'select', value: v.chofer || '',
+            options: [{ v: '', t: '— Sin asignar —' }, ...choferes().map(c => ({ v: c, t: c }))] },
+          { id: 'odometro', label: 'Odómetro (km)', value: v.odometro, num: true },
+          { id: 'ultimoService', label: 'Último service (km)', value: v.ultimoService, num: true }
+        ],
+        validar: vals => {
+          const p = normPatente(vals.patente);
+          if (FLOTA.some((x, j) => j !== idx && normPatente(x.patente) === p)) return 'Esa patente ya está cargada en otro vehículo';
+          if (aNum(vals.ultimoService) > aNum(vals.odometro)) return 'El último service no puede ser mayor al odómetro';
+          return null;
+        }
+      });
+    }
+
+    function aplicarVehiculo(v, r) {
+      v.modelo = r.modelo;
+      v.patente = normPatente(r.patente);
+      const od = aNum(r.odometro);
+      v.odometro = od;
+      if (od < v.kmInicio) v.kmInicio = od;
+      v.ultimoService = aNum(r.ultimoService);
+      const ch = r.chofer || null;
+      if (ch) FLOTA.forEach(o => { if (o !== v && o.chofer === ch) o.chofer = null; });
+      v.chofer = ch;
+    }
+
+    async function editarVehiculo(i) {
+      const v = FLOTA[i]; if (!v) return;
+      const r = await formVehiculo('Editar vehículo', v, i);
+      if (!r) return;
+      aplicarVehiculo(v, r);
+      sincronizarVehiculosTarjetas(); renderFlota(); guardarEstado();
+      toast(`Vehículo ${v.patente} actualizado`);
+    }
+
+    async function agregarVehiculo() {
+      const nuevo = { modelo: '', patente: '', chofer: null, odometro: 0, kmInicio: 0, ultimoService: 0, taller: false };
+      const r = await formVehiculo('Agregar vehículo', nuevo, -1);
+      if (!r) return;
+      aplicarVehiculo(nuevo, r);
+      nuevo.kmInicio = nuevo.odometro;
+      FLOTA.push(nuevo);
+      sincronizarVehiculosTarjetas(); renderFlota(); guardarEstado();
+      toast(`Vehículo ${nuevo.patente} agregado`);
+    }
+
+    async function eliminarVehiculo(i) {
+      const v = FLOTA[i]; if (!v) return;
+      if (!(await dlgConfirm(`¿Eliminar el vehículo ${v.modelo} (${v.patente})?`, { ok: 'Eliminar', peligro: true }))) return;
+      FLOTA.splice(i, 1);
+      sincronizarVehiculosTarjetas(); renderFlota(); guardarEstado();
+      toast(`Vehículo ${v.patente} eliminado`);
+    }
+
+    // =====================================================================
+    //  HISTORIAL DE VIAJES: AGREGAR / EDITAR / BORRAR
+    // =====================================================================
+    const ETQ_HORA = { inicio: 'Inicio de carga', fin: 'Fin de carga', salida: 'Salida', regreso: 'Regreso' };
+
+    function formViaje(titulo, v) {
+      const lista = choferes(); if (v.chofer && !lista.includes(v.chofer)) lista.push(v.chofer);
+      const franjas = [...new Set([...FRANJAS, v.franja].filter(Boolean))].sort();
+      return dlg({
+        titulo,
+        campos: [
+          { id: 'chofer', label: 'Chofer', type: 'select', value: v.chofer, options: lista.map(c => ({ v: c, t: c })) },
+          { id: 'franja', label: 'Franja', type: 'select', value: v.franja, options: franjas.map(f => ({ v: f, t: f + ' hs' })) },
+          { id: 'pedidos', label: 'Pedidos', value: v.pedidos, num: true },
+          { id: 'cajas', label: 'Cajas', value: v.cajas, num: true },
+          { id: 'inicio', label: 'Inicio de carga (HH:MM)', value: v.inicio },
+          { id: 'fin', label: 'Fin de carga (HH:MM)', value: v.fin },
+          { id: 'salida', label: 'Salida (HH:MM)', value: v.salida },
+          { id: 'regreso', label: 'Regreso (HH:MM)', value: v.regreso }
+        ],
+        validar: vals => {
+          if (!vals.chofer) return 'Elegí un chofer';
+          for (const k of Object.keys(ETQ_HORA)) if (!okHora(vals[k])) return `"${ETQ_HORA[k]}": hora inválida. Usá HH:MM, por ejemplo 09:15`;
+          const m = k => toMin(normHora(vals[k]));
+          if (m('fin') < m('inicio')) return 'El fin de carga no puede ser anterior al inicio';
+          if (m('regreso') < m('salida')) return 'El regreso no puede ser anterior a la salida';
+          return null;
+        }
+      });
+    }
+    const leerViaje = r => ({ chofer: r.chofer, franja: r.franja, pedidos: aNum(r.pedidos), cajas: aNum(r.cajas),
+      inicio: normHora(r.inicio), fin: normHora(r.fin), salida: normHora(r.salida), regreso: normHora(r.regreso) });
+
+    async function editarViaje(i) {
+      const v = VIAJES[i]; if (!v) return;
+      const r = await formViaje('Editar viaje', v);
+      if (!r) return;
+      VIAJES[i] = leerViaje(r);
+      renderHistorial(); guardarEstado();
+      toast('Viaje actualizado');
+    }
+    async function agregarViaje() {
+      const r = await formViaje('Agregar viaje', { chofer: choferes()[0] || '', franja: FRANJA_ACTUAL, pedidos: 0, cajas: 0, inicio: '', fin: '', salida: '', regreso: '' });
+      if (!r) return;
+      VIAJES.push(leerViaje(r));
+      renderHistorial(); guardarEstado();
+      toast('Viaje agregado al historial');
+    }
+    async function borrarViaje(i) {
+      const v = VIAJES[i]; if (!v) return;
+      if (!(await dlgConfirm(`¿Borrar el viaje de ${v.chofer} (franja ${v.franja})?`, { ok: 'Borrar', peligro: true }))) return;
+      VIAJES.splice(i, 1);
+      renderHistorial(); guardarEstado();
+      toast('Viaje borrado');
+    }
+    async function borrarHistorial() {
+      if (!VIAJES.length) { toast('El historial ya está vacío'); return; }
+      if (!(await dlgConfirm(`¿Borrar los ${VIAJES.length} viajes del historial? No se puede deshacer.`, { titulo: 'Borrar historial', ok: 'Borrar todo', peligro: true }))) return;
+      VIAJES = [];
+      renderHistorial(); guardarEstado();
+      toast('Historial borrado');
+    }
+
+    // =====================================================================
+    //  ASISTENCIA: AGREGAR / EDITAR / ELIMINAR PERSONAS
+    // =====================================================================
+    const ESTADOS_ASIS = ['Sin marcar', 'Presente', 'Tarde', 'Ausente', 'Franco'];
+
+    function formAsistencia(titulo, a, idx) {
+      return dlg({
+        titulo,
+        campos: [
+          { id: 'nombre', label: 'Nombre y apellido', value: a.nombre, full: true, req: true },
+          { id: 'turno', label: 'Turno (HH:MM)', value: a.turno === '—' ? '' : a.turno, placeholder: 'Ej: 08:30 (vacío = sin turno)' },
+          { id: 'estado', label: 'Estado', type: 'select', value: a.estado, options: ESTADOS_ASIS.map(e => ({ v: e, t: e })) },
+          { id: 'ingreso', label: 'Ingreso (HH:MM)', value: a.ingreso || '', placeholder: 'Vacío = no ingresó' },
+          { id: 'egreso', label: 'Egreso (HH:MM)', value: a.egreso || '', placeholder: 'Vacío = no egresó' }
+        ],
+        validar: v => {
+          if (v.nombre.length < 2) return 'Ingresá el nombre y apellido';
+          if (ASISTENCIA.some((x, j) => j !== idx && igual(x.nombre, v.nombre))) return 'Ya hay una persona con ese nombre';
+          if (choferes().some(c => c !== a.nombre && igual(c, v.nombre))) return 'Ya existe un chofer con ese nombre';
+          for (const k of ['turno', 'ingreso', 'egreso']) if (v[k] && !okHora(v[k])) return `"${k}": hora inválida. Usá HH:MM`;
+          if (v.egreso && !v.ingreso) return 'Para cargar un egreso hace falta el ingreso';
+          return null;
+        }
+      });
+    }
+    function aplicarAsistencia(a, r) {
+      a.turno = r.turno ? normHora(r.turno) : '—';
+      a.ingreso = r.ingreso ? normHora(r.ingreso) : null;
+      a.egreso = r.egreso ? normHora(r.egreso) : null;
+      let est = r.estado;
+      if (a.ingreso && est === 'Sin marcar') {
+        const t = toMin(a.turno);
+        est = (t != null && toMin(a.ingreso) - t > TOLERANCIA_INGRESO) ? 'Tarde' : 'Presente';
+      }
+      if (!a.ingreso && (est === 'Presente' || est === 'Tarde')) est = 'Sin marcar';
+      a.estado = est;
+    }
+    async function editarAsistencia(i) {
+      const a = ASISTENCIA[i]; if (!a) return;
+      const r = await formAsistencia('Editar persona', a, i);
+      if (!r) return;
+      if (r.nombre !== a.nombre) {
+        if (choferes().includes(a.nombre)) renombrarChofer(a.nombre, r.nombre); else a.nombre = r.nombre;
+        sincronizarVehiculosTarjetas();
+      }
+      aplicarAsistencia(a, r);
+      renderAsistencia(); guardarEstado();
+      toast(`${a.nombre} actualizado`);
+    }
+    async function agregarAsistencia() {
+      const nuevo = { nombre: '', turno: '—', ingreso: null, egreso: null, estado: 'Sin marcar' };
+      const r = await formAsistencia('Agregar persona', nuevo, -1);
+      if (!r) return;
+      nuevo.nombre = r.nombre;
+      aplicarAsistencia(nuevo, r);
+      ASISTENCIA.push(nuevo);
+      renderAsistencia(); guardarEstado();
+      toast(`${nuevo.nombre} agregado a Asistencia`);
+    }
+    async function eliminarAsistencia(i) {
+      const a = ASISTENCIA[i]; if (!a) return;
+      const extra = choferes().includes(a.nombre) ? ' Es un chofer activo: seguirá en Logística, solo se quita de Asistencia.' : '';
+      if (!(await dlgConfirm(`¿Quitar a ${a.nombre} de Asistencia?${extra}`, { ok: 'Quitar', peligro: true }))) return;
+      ASISTENCIA.splice(i, 1);
+      renderAsistencia(); guardarEstado();
+      toast(`${a.nombre} quitado de Asistencia`);
+    }
+
+    // Guardado automático
+    setInterval(guardarEstado, 4000);
+    window.addEventListener('pagehide', guardarEstado);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) guardarEstado(); });
+
+    // =====================================================================
     //  INICIO
     // =====================================================================
     function iniciar() {
-      $$('.driver-card').forEach(normalizarStepper);
+      try { restaurarEstado(); } catch (e) { console.error('No se pudo restaurar el estado guardado', e); }
+      $$('.driver-card').forEach(c => { normalizarStepper(c); mejorarTarjeta(c); });
+      sincronizarVehiculosTarjetas();
+      renderUsuarioHeader();
       renderHistorial();
       recalcKPIs();
       animateKPIs();
