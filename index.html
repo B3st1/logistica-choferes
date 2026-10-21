@@ -1251,9 +1251,20 @@
       .driver-grid { grid-template-columns: 1fr; }
       .kpi-grid { grid-template-columns: 1fr; }
       header { flex-direction: column; align-items: stretch; gap: 12px; }
-      .header-pills { justify-content: space-between; }
+      .header-pills { justify-content: space-between; flex-wrap: wrap; }
     }
-  
+
+    /* Inicio de sesión local */
+    .login-gate { position:fixed; inset:0; z-index:20000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(3,7,18,.94); backdrop-filter:blur(12px); }
+    .login-gate[hidden] { display:none; }
+    .login-card { width:min(420px,100%); padding:28px; border:1px solid var(--border-accent); border-radius:var(--radius-xl); background:#0f172a; box-shadow:0 20px 60px rgba(0,0,0,.65); }
+    .login-card h2 { margin:0 0 8px; color:#fff; font-size:1.35rem; }
+    .login-card p { margin:0 0 18px; color:var(--text-muted); font-size:.84rem; line-height:1.5; }
+    .login-card label { display:block; margin:12px 0 6px; color:var(--text-muted); font-size:.78rem; font-weight:700; }
+    .login-card .form-input { margin-bottom:4px; }
+    .login-error { min-height:1.25em; margin-top:8px; color:#fda4af; font-size:.8rem; }
+    .login-note { margin-top:18px !important; margin-bottom:0 !important; font-size:.72rem !important; color:var(--text-dim) !important; }
+
     /* ===== Diálogos propios (reemplazan prompt/confirm) ===== */
     .dlg-ov { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 16px; animation: modalFade 0.2s ease; }
@@ -1313,6 +1324,8 @@
         </div>
       </div>
 
+      <button class="btn btn-secondary btn-xs" title="Cambiar de cuenta" onclick="cambiarUsuario()"><i class="fa-solid fa-right-left"></i> Cambiar cuenta</button>
+
       <button class="btn-refresh" title="Actualizar datos" onclick="refreshDashboard()">
         <i class="fa-solid fa-rotate"></i>
       </button>
@@ -1344,11 +1357,11 @@
           <i class="fa-solid fa-box-open kpi-icon" style="color: var(--cyan);"></i>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value counter" id="kpiPedidos" data-target="73">0</span>
+          <span class="kpi-value counter" id="kpiPedidos" data-target="0">0</span>
         </div>
         <div class="kpi-footer" style="color: #34d399;">
-          <i class="fa-solid fa-arrow-trend-up"></i>
-          <span>+14% vs ayer misma franja</span>
+          <i class="fa-solid fa-inbox"></i>
+          <span>Sin pedidos cargados</span>
         </div>
       </div>
 
@@ -1358,10 +1371,10 @@
           <i class="fa-solid fa-truck-moving kpi-icon" style="color: var(--emerald);"></i>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value counter" id="kpiReparto" data-target="2">0</span>
+          <span class="kpi-value counter" id="kpiReparto" data-target="0">0</span>
         </div>
         <div class="kpi-footer">
-          <span id="kpiRepartoFoot">De 6 choferes asignados</span>
+          <span id="kpiRepartoFoot">De 0 choferes asignados</span>
         </div>
       </div>
 
@@ -1371,7 +1384,7 @@
           <i class="fa-solid fa-stopwatch kpi-icon" style="color: var(--amber);"></i>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value counter" id="kpiCarga" data-target="16">0</span>
+          <span class="kpi-value counter" id="kpiCarga" data-target="0">0</span>
           <span class="kpi-unit">min</span>
         </div>
         <div class="kpi-footer" id="kpiCargaFoot" style="color: #34d399;">
@@ -1386,10 +1399,10 @@
           <i class="fa-solid fa-boxes-stacked kpi-icon" style="color: var(--purple);"></i>
         </div>
         <div class="kpi-value-row">
-          <span class="kpi-value counter" id="kpiCajas" data-target="182">0</span>
+          <span class="kpi-value counter" id="kpiCajas" data-target="0">0</span>
         </div>
         <div class="kpi-footer">
-          <span id="kpiCajasFoot">Promedio 2.8 cajas / pedido</span>
+          <span id="kpiCajasFoot">Promedio 0 cajas / pedido</span>
         </div>
       </div>
     </section>
@@ -1433,267 +1446,7 @@
       </div>
 
       <!-- GRID DE CHOFERES -->
-      <div class="driver-grid" id="driverCardsContainer">
-        
-        <!-- CHOFER 1 -->
-        <div class="driver-card" data-driver="Carlos Ramos" data-franja="11:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Carlos Ramos</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Renault Kangoo • AF 123 CD</div>
-              </div>
-            </div>
-            <span class="status-badge travel">EN VIAJE</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">10:45</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">11:05</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">11:10</span>
-            </div>
-            <div class="step-box current" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">—</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>19</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>44</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-        <!-- CHOFER 2 -->
-        <div class="driver-card" data-driver="Martín Benítez" data-franja="11:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Martín Benítez</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Peugeot Partner • AE 942 ZZ</div>
-              </div>
-            </div>
-            <span class="status-badge loading">EN CARGA</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">11:02</span>
-            </div>
-            <div class="step-box current" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">—</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>14</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>32</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-        <!-- CHOFER 3 -->
-        <div class="driver-card" data-driver="Lucas Ferrara" data-franja="09:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Lucas Ferrara</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-truck"></i> Mercedes Sprinter • AD 881 AA</div>
-              </div>
-            </div>
-            <span class="status-badge done">COMPLETADO</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">08:50</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">09:12</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">09:16</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">10:55</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>24</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>68</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-        <!-- CHOFER 4 -->
-        <div class="driver-card" data-driver="Gonzalo Díaz" data-franja="11:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Gonzalo Díaz</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Fiat Fiorino • AF 554 BB</div>
-              </div>
-            </div>
-            <span class="status-badge travel">EN VIAJE</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">10:50</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">11:08</span>
-            </div>
-            <div class="step-box done" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">11:15</span>
-            </div>
-            <div class="step-box current" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">—</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>16</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>38</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-        <!-- CHOFER 5 -->
-        <div class="driver-card" data-driver="Esteban Morales" data-franja="11:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Esteban Morales</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Renault Kangoo • AG 331 OP</div>
-              </div>
-            </div>
-            <span class="status-badge waiting">EN ESPERA</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box current" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">—</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>0</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>0</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-        <!-- CHOFER 6 -->
-        <div class="driver-card" data-driver="Federico Rossi" data-franja="11:00">
-          <div class="driver-card-header">
-            <div class="driver-identity">
-              <div class="driver-avatar-box"><i class="fa-solid fa-user-ninja"></i></div>
-              <div>
-                <div class="driver-name">Federico Rossi</div>
-                <div class="driver-vehicle"><i class="fa-solid fa-van-shuttle"></i> Citroën Berlingo • AC 102 LK</div>
-              </div>
-            </div>
-            <span class="status-badge waiting">EN ESPERA</span>
-          </div>
-
-          <div class="mini-stepper">
-            <div class="step-box current" onclick="handleStep(this)">
-              <span class="step-title">📦 Inicio</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">✅ Carga</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🚚 Salida</span>
-              <span class="step-val">—</span>
-            </div>
-            <div class="step-box" onclick="handleStep(this)">
-              <span class="step-title">🏁 Regreso</span>
-              <span class="step-val">—</span>
-            </div>
-          </div>
-
-          <div class="driver-card-footer">
-            <div class="cargo-info">
-              <span><i class="fa-solid fa-box"></i> Pedidos: <strong>0</strong></span>
-              <span><i class="fa-solid fa-boxes-stacked"></i> Cajas: <strong>0</strong></span>
-            </div>
-            <button class="btn-manage" onclick="abrirGestionModal(this)">
-              <i class="fa-regular fa-pen-to-square"></i> Gestionar
-            </button>
-          </div>
-        </div>
-
-      </div>
+      <div class="driver-grid" id="driverCardsContainer"></div>
     </section>
 
     <!-- HISTORIAL Y RESUMEN DE SALIDAS -->
@@ -1812,6 +1565,20 @@
             <span class="href-legend">Estándar 22 min</span>
           </div>
           <div id="chartCarga"></div>
+        </div>
+        <div class="chart-card">
+          <div>
+            <div class="chart-title"><i class="fa-solid fa-trophy" style="color:var(--amber)"></i> Ranking de viajes</div>
+            <div class="chart-sub">Viajes cerrados por chofer · desempata por pedidos</div>
+          </div>
+          <div id="chartRankViajes"></div>
+        </div>
+        <div class="chart-card">
+          <div>
+            <div class="chart-title"><i class="fa-solid fa-boxes-stacked" style="color:var(--cyan)"></i> Ranking de paquetes / bultos</div>
+            <div class="chart-sub">Cajas transportadas en viajes cerrados · no es lo mismo que viajes</div>
+          </div>
+          <div id="chartRankBultos"></div>
         </div>
         <div class="chart-card wide">
           <div>
@@ -1939,7 +1706,7 @@
             <div class="panel-heading-icon"><i class="fa-solid fa-van-shuttle"></i></div>
             <div>
               <div class="panel-title">Flota de Reparto</div>
-              <div class="panel-subtitle">Estado de cada vehículo, km del día y próximo service (cada 10.000 km)</div>
+              <div class="panel-subtitle">Flota importada de la hoja Móviles. El km inicial corresponde al 03/09/2026; la planilla no informa el último service.</div>
             </div>
           </div>
           <div class="panel-actions" id="flotaResumen"></div>
@@ -2015,6 +1782,22 @@
   <div class="toast-box" id="toastNotification">
     <i class="fa-solid fa-circle-check" style="color:var(--emerald)"></i>
     <span id="toastMsg">Actualizado con éxito</span>
+  </div>
+
+  <!-- Pantalla inicial de acceso: autenticación local, no de servidor -->
+  <div class="login-gate" id="loginGate" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <div class="brand-icon" style="margin-bottom:16px"><i class="fa-solid fa-lock"></i></div>
+      <h2 id="loginTitle">Iniciar sesión</h2>
+      <p>Ingresá tu usuario y contraseña para abrir el panel.</p>
+      <label for="loginUsername">Usuario</label>
+      <input class="form-input" id="loginUsername" name="username" type="text" autocomplete="username" required autofocus>
+      <label for="loginPassword">Contraseña</label>
+      <input class="form-input" id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+      <div class="login-error" id="loginError" role="alert"></div>
+      <button class="btn btn-primary-c" type="submit" style="width:100%;justify-content:center;padding:11px"><i class="fa-solid fa-right-to-bracket"></i> Ingresar</button>
+      <p class="login-note">Las cuentas de esta versión se guardan solo en este navegador; no reemplazan un sistema de autenticación seguro en servidor.</p>
+    </form>
   </div>
 
   <script>
@@ -2141,39 +1924,33 @@
       { bg: '#c98500', fg: '#0b0b0b' }, { bg: '#d55181', fg: '#ffffff' }, { bg: '#008300', fg: '#ffffff' },
       { bg: '#9085e9', fg: '#0b0b0b' }, { bg: '#e66767', fg: '#0b0b0b' }
     ];
-    const CHOFER_ORDEN = ['Carlos Ramos', 'Martín Benítez', 'Lucas Ferrara', 'Gonzalo Díaz', 'Esteban Morales', 'Federico Rossi'];
+    const CHOFER_ORDEN = [];
     const colorDe = nombre => {
       const i = CHOFER_ORDEN.indexOf(nombre);
       return (i >= 0 && i < COLORES.length) ? COLORES[i] : { bg: '#64748b', fg: '#ffffff' };
     };
     const choferes = () => $$('.driver-card').map(c => c.dataset.driver);
 
-    let FLOTA = [
-      { modelo: 'Renault Kangoo',    patente: 'AF 123 CD', chofer: 'Carlos Ramos',    odometro: 121592, kmInicio: 121540, ultimoService: 114800, taller: false },
-      { modelo: 'Peugeot Partner',   patente: 'AE 942 ZZ', chofer: 'Martín Benítez',  odometro: 98410,  kmInicio: 98410,  ultimoService: 89120,  taller: false },
-      { modelo: 'Mercedes Sprinter', patente: 'AD 881 AA', chofer: 'Lucas Ferrara',   odometro: 143276, kmInicio: 143238, ultimoService: 136500, taller: false },
-      { modelo: 'Fiat Fiorino',      patente: 'AF 554 BB', chofer: 'Gonzalo Díaz',    odometro: 76747,  kmInicio: 76700,  ultimoService: 70100,  taller: false },
-      { modelo: 'Renault Kangoo',    patente: 'AG 331 OP', chofer: 'Esteban Morales', odometro: 54120,  kmInicio: 54120,  ultimoService: 50110,  taller: false },
-      { modelo: 'Citroën Berlingo',  patente: 'AC 102 LK', chofer: 'Federico Rossi',  odometro: 167830, kmInicio: 167830, ultimoService: 157500, taller: false },
-      { modelo: 'Peugeot Partner',   patente: 'AB 774 KT', chofer: null,              odometro: 132050, kmInicio: 132050, ultimoService: 122600, taller: true }
+    // Flota importada únicamente de la hoja «Móviles» del Excel adjunto.
+    // La planilla trae año, no marca/modelo; no se inventan esos datos.
+    const FLOTA_EXCEL_VERSION = 'moviles-2026-09-03-v1';
+    const FLOTA_DESDE_EXCEL = [
+      { movil: 1,  anio: 2021, modelo: 'Año 2021', patente: 'AE389LT', chofer: '', combustible: 'Diesel', odometro: 129143, kmInicio: 129143, kmInicialRegistro: 129143, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 2,  anio: 2020, modelo: 'Año 2020', patente: 'AE211MR', chofer: '', combustible: 'Diesel', odometro: 166579, kmInicio: 166579, kmInicialRegistro: 166579, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 5,  anio: 2020, modelo: 'Año 2020', patente: 'AE729TU', chofer: '', combustible: 'Diesel', odometro: 100576, kmInicio: 100576, kmInicialRegistro: 100576, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 6,  anio: 2025, modelo: 'Año 2025', patente: 'AH937TL', chofer: '', combustible: 'Diesel', odometro: 14113, kmInicio: 14113, kmInicialRegistro: 14113, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 8,  anio: 2020, modelo: 'Año 2020', patente: 'AE084YJ', chofer: '', combustible: 'Diesel', odometro: 158620, kmInicio: 158620, kmInicialRegistro: 158620, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 9,  anio: 2020, modelo: 'Año 2020', patente: 'AE084YG', chofer: '', combustible: 'Diesel', odometro: 152784, kmInicio: 152784, kmInicialRegistro: 152784, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 11, anio: 2021, modelo: 'Año 2021', patente: 'AE729TT', chofer: '', combustible: 'Diesel', odometro: 132642, kmInicio: 132642, kmInicialRegistro: 132642, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 12, anio: 2020, modelo: 'Año 2020', patente: 'AE113UK', chofer: '', combustible: 'Diesel', odometro: 129024, kmInicio: 129024, kmInicialRegistro: 129024, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 14, anio: 2025, modelo: 'Año 2025', patente: 'AH937TN', chofer: '', combustible: 'Diesel', odometro: 15027, kmInicio: 15027, kmInicialRegistro: 15027, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false },
+      { movil: 15, anio: 2021, modelo: 'Año 2021', patente: 'AE729TS', chofer: '', combustible: 'Diesel', odometro: 132661, kmInicio: 132661, kmInicialRegistro: 132661, fechaKmInicial: '2026-09-03', observaciones: '', ultimoService: null, taller: false }
     ];
+    let FLOTA = FLOTA_DESDE_EXCEL.map(v => ({ ...v }));
 
-    let ASISTENCIA = [
-      { nombre: 'Lucas Ferrara',   turno: '08:30', ingreso: '08:24', egreso: null, estado: 'Presente' },
-      { nombre: 'Carlos Ramos',    turno: '08:30', ingreso: '08:28', egreso: null, estado: 'Presente' },
-      { nombre: 'Gonzalo Díaz',    turno: '08:30', ingreso: '08:43', egreso: null, estado: 'Tarde' },
-      { nombre: 'Martín Benítez',  turno: '10:30', ingreso: '10:26', egreso: null, estado: 'Presente' },
-      { nombre: 'Esteban Morales', turno: '12:30', ingreso: null,    egreso: null, estado: 'Sin marcar' },
-      { nombre: 'Federico Rossi',  turno: '12:30', ingreso: null,    egreso: null, estado: 'Sin marcar' },
-      { nombre: 'Diego Suárez',    turno: '—',     ingreso: null,    egreso: null, estado: 'Franco' },
-      { nombre: 'Nicolás Paz',     turno: '08:30', ingreso: null,    egreso: null, estado: 'Ausente' }
-    ];
+    let ASISTENCIA = [];
 
-    let VIAJES = [
-      { chofer: 'Lucas Ferrara', franja: '09:00', pedidos: 24, cajas: 68, inicio: '08:50', fin: '09:12', salida: '09:16', regreso: '10:55' },
-      { chofer: 'Carlos Ramos',  franja: '09:00', pedidos: 18, cajas: 41, inicio: '08:52', fin: '09:10', salida: '09:15', regreso: '10:35' },
-      { chofer: 'Gonzalo Díaz',  franja: '09:00', pedidos: 15, cajas: 36, inicio: '08:55', fin: '09:15', salida: '09:20', regreso: '10:48' }
-    ];
+    let VIAJES = [];
 
     const ESTADOS = ['Entregado', 'En camino', 'En preparación', 'Asignado', 'Pendiente', 'No entregado', 'Reprogramado'];
     const ESTADO_UI = {
@@ -2187,62 +1964,8 @@
     };
     const pillEstado = e => { const u = ESTADO_UI[e] || ESTADO_UI['Pendiente']; return `<span class="st ${u.cls}"><i class="fa-solid ${u.icon}"></i> ${esc(e)}</span>`; };
 
-    // Pedidos del día (datos de ejemplo generados de forma fija)
-    const PEDIDOS = (function generarPedidos() {
-      const rnd = mulberry32(20261004);
-      const pick = arr => arr[Math.floor(rnd() * arr.length)];
-      const CALLES = ['Av. España', 'Av. Colón', 'Gral. Paz', 'Rodríguez', 'Pinto', 'Belgrano', 'Chacabuco', '9 de Julio', 'Sarmiento', 'Mitre', 'Alem', 'Av. Avellaneda', 'Av. Santamarina', 'Maipú', '14 de Julio', 'Las Heras', 'Yrigoyen', 'Fuerte Independencia', 'Av. Buzón', 'Machado', 'Uriburu', 'Constitución', 'Moreno', 'Garibaldi'];
-      const NOMBRES = ['María', 'Juan', 'Laura', 'Diego', 'Sofía', 'Pablo', 'Valeria', 'Martín', 'Lucía', 'Jorge', 'Carla', 'Hernán', 'Florencia', 'Ricardo', 'Paula', 'Andrés', 'Romina', 'Sergio', 'Natalia', 'Gustavo', 'Agustina', 'Fernando', 'Julieta', 'Raúl'];
-      const INICIALES = 'ABCDFGLMPRST'.split('');
-      const MOTIVOS = ['Cliente ausente', 'Dirección incorrecta', 'No atiende el teléfono', 'Rechazó el pedido'];
-      const PLAN = [
-        { franja: '09:00', chofer: 'Lucas Ferrara',  n: 24, cajas: 68, estado: 'Entregado',      sector: 35 },
-        { franja: '09:00', chofer: 'Carlos Ramos',   n: 18, cajas: 41, estado: 'Entregado',      sector: 155 },
-        { franja: '09:00', chofer: 'Gonzalo Díaz',   n: 15, cajas: 36, estado: 'Entregado',      sector: 270 },
-        { franja: '11:00', chofer: 'Carlos Ramos',   n: 19, cajas: 44, estado: 'En camino',      sector: 205 },
-        { franja: '11:00', chofer: 'Martín Benítez', n: 14, cajas: 32, estado: 'En preparación', sector: 85 },
-        { franja: '11:00', chofer: 'Gonzalo Díaz',   n: 16, cajas: 38, estado: 'En camino',      sector: 325 },
-        { franja: '13:00', chofer: null, n: 21, estado: 'Pendiente' },
-        { franja: '15:00', chofer: null, n: 17, estado: 'Pendiente' },
-        { franja: '17:00', chofer: null, n: 12, estado: 'Pendiente' },
-        { franja: '19:00', chofer: null, n: 8,  estado: 'Pendiente' }
-      ];
-      const kmLat = 111.32, kmLng = 111.32 * Math.cos(BASE.lat * Math.PI / 180);
-      let id = 48210;
-      const out = [];
-      PLAN.forEach(g => {
-        let cajas;
-        if (g.cajas) {
-          cajas = Array(g.n).fill(1);
-          for (let r = g.cajas - g.n; r > 0; r--) cajas[Math.floor(rnd() * g.n)]++;
-        }
-        for (let i = 0; i < g.n; i++) {
-          const ang = (g.sector != null ? g.sector + (rnd() - 0.5) * 80 : rnd() * 360) * Math.PI / 180;
-          const r = g.sector != null ? 0.4 + rnd() * 2.3 : 0.3 + rnd() * 2.8;
-          out.push({
-            id: id++,
-            cliente: `${pick(NOMBRES)} ${pick(INICIALES)}.`,
-            direccion: `${pick(CALLES)} ${100 + Math.floor(rnd() * 1700)}`,
-            franja: g.franja,
-            franjaOriginal: g.franja,
-            chofer: g.chofer,
-            cajas: cajas ? cajas[i] : 1 + Math.floor(rnd() * 5),
-            estado: g.estado,
-            lat: BASE.lat + (r / kmLat) * Math.sin(ang),
-            lng: BASE.lng + (r / kmLng) * Math.cos(ang),
-            motivo: null,
-            intentos: 0
-          });
-        }
-      });
-      // Algunos pedidos de la primera franja no se pudieron entregar
-      const primera = out.filter(p => p.franja === '09:00');
-      [3, 17, 29, 44].forEach(i => {
-        const p = primera[i];
-        if (p) { p.estado = 'No entregado'; p.motivo = pick(MOTIVOS); p.intentos = 1; }
-      });
-      return out;
-    })();
+    // Pedidos del día (vacío: se cargan al iniciar la operación)
+    const PEDIDOS = [];
 
     // =====================================================================
     //  NAVEGACIÓN ENTRE PESTAÑAS
@@ -2546,7 +2269,7 @@
       toast(`Datos actualizados para ${cardActual.dataset.driver}`);
     }
 
-    $('#gestionModal').addEventListener('click', e => { if (e.target.id === 'gestionModal') cerrarModal(); });
+    // No se cierra al hacer clic afuera (se perdía lo escrito); usar Cancelar, la X o Escape.
     document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
 
     // =====================================================================
@@ -3027,6 +2750,28 @@
         tip: `${x.c}\n${x.n} pedidos · ${x.cajas} cajas\n${x.entregados} entregados`
       })), { vacio: 'Ningún chofer tiene pedidos asignados' });
 
+      // Rankings (viajes cerrados): por cantidad de viajes y por bultos/cajas
+      const MED = ['🥇', '🥈', '🥉'];
+      const acum = {};
+      VIAJES.forEach(v => {
+        const a = acum[v.chofer] || (acum[v.chofer] = { c: v.chofer, viajes: 0, pedidos: 0, cajas: 0 });
+        a.viajes++; a.pedidos += (+v.pedidos || 0); a.cajas += (+v.cajas || 0);
+      });
+      const lista = Object.values(acum);
+      const medalla = i => MED[i] || `${i + 1}º`;
+      const rankViajes = lista.slice().sort((a, b) => b.viajes - a.viajes || b.pedidos - a.pedidos || b.cajas - a.cajas);
+      $('#chartRankViajes').innerHTML = hbarChart(rankViajes.map((x, i) => ({
+        label: `${medalla(i)} ${x.c}`, dot: colorDe(x.c).bg, value: x.viajes,
+        text: `${x.viajes} viaje${x.viajes === 1 ? '' : 's'} <span style="color:var(--text-muted)">· ${x.pedidos} ped</span>`,
+        tip: `${x.c}\n${x.viajes} viaje${x.viajes === 1 ? '' : 's'} cerrado${x.viajes === 1 ? '' : 's'}\n${x.pedidos} pedidos · ${x.cajas} cajas`
+      })), { vacio: 'Todavía no hay viajes cerrados' });
+      const rankBultos = lista.slice().sort((a, b) => b.cajas - a.cajas || b.pedidos - a.pedidos || b.viajes - a.viajes);
+      $('#chartRankBultos').innerHTML = hbarChart(rankBultos.map((x, i) => ({
+        label: `${medalla(i)} ${x.c}`, dot: colorDe(x.c).bg, value: x.cajas,
+        text: `${x.cajas} bultos <span style="color:var(--text-muted)">· ${x.viajes} viaje${x.viajes === 1 ? '' : 's'}</span>`,
+        tip: `${x.c}\n${x.cajas} bultos/cajas en ${x.viajes} viaje${x.viajes === 1 ? '' : 's'}\n${x.pedidos} pedidos`
+      })), { vacio: 'Todavía no hay viajes cerrados' });
+
       // Tiempo de carga por viaje
       $('#chartCarga').innerHTML = hbarChart(VIAJES.map((v, i) => {
         const t = cargas[i];
@@ -3222,41 +2967,46 @@
 
       $('#flotaGrid').innerHTML = FLOTA.map((v, i) => {
         const e = estados[i];
-        const desde = Math.max(0, v.odometro - v.ultimoService);
-        const pct = Math.min(1, desde / INTERVALO_SERVICE);
-        const resta = INTERVALO_SERVICE - desde;
-        const nivel = resta <= 0 ? 'crit' : (pct >= 0.9 ? 'warn' : '');
-        const textoService = resta <= 0
-          ? `<span style="color:#fda4af"><i class="fa-solid fa-circle-exclamation"></i> Service vencido hace ${fmtNum(-resta)} km</span>`
-          : (nivel === 'warn'
-            ? `<span style="color:#fbbf24"><i class="fa-solid fa-triangle-exclamation"></i> Service en ${fmtNum(resta)} km</span>`
-            : `<span>Próximo service en ${fmtNum(resta)} km</span>`);
+        const tieneService = Number(v.ultimoService) > 0;
+        const desde = tieneService ? Math.max(0, v.odometro - v.ultimoService) : 0;
+        const pct = tieneService ? Math.min(1, desde / INTERVALO_SERVICE) : 0;
+        const resta = tieneService ? INTERVALO_SERVICE - desde : null;
+        const nivel = !tieneService ? '' : (resta <= 0 ? 'crit' : (pct >= 0.9 ? 'warn' : ''));
+        const textoService = !tieneService
+          ? `<span style="color:var(--text-muted)"><i class="fa-regular fa-circle-question"></i> Último service sin dato en la planilla</span>`
+          : (resta <= 0
+            ? `<span style="color:#fda4af"><i class="fa-solid fa-circle-exclamation"></i> Service vencido hace ${fmtNum(-resta)} km</span>`
+            : (nivel === 'warn'
+              ? `<span style="color:#fbbf24"><i class="fa-solid fa-triangle-exclamation"></i> Service en ${fmtNum(resta)} km</span>`
+              : `<span>Próximo service en ${fmtNum(resta)} km</span>`));
         return `<div class="fleet-card">
           <div class="fleet-head">
             <div>
-              <div class="fleet-model">${esc(v.modelo)}</div>
+              <div class="fleet-model">Móvil ${esc(String(v.movil ?? '—'))} · ${esc(v.modelo || 'Modelo no informado')}</div>
               <span class="plate">${esc(v.patente)}</span>
             </div>
             <span class="st ${e.cls}"><i class="fa-solid ${e.icon}"></i> ${e.txt}</span>
           </div>
           <div style="font-size:0.8rem; color:var(--text-muted)">
-            <i class="fa-solid fa-user"></i> ${v.chofer ? `<span class="chofer-dot" style="background:${colorDe(v.chofer).bg}; margin-left:4px"></span>${esc(v.chofer)}` : 'Sin chofer asignado'}
+            <i class="fa-solid fa-user"></i> Chofer habitual: ${v.chofer ? `<span class="chofer-dot" style="background:${colorDe(v.chofer).bg}; margin-left:4px"></span>${esc(v.chofer)}` : 'Sin asignar'}
           </div>
+          <div style="font-size:.75rem;color:var(--text-muted)">${esc(v.combustible || 'Combustible no informado')} · Km inicial: ${fmtNum(v.kmInicialRegistro ?? v.odometro)}${v.fechaKmInicial ? ` (${esc(v.fechaKmInicial.split('-').reverse().join('/'))})` : ''}</div>
+          ${v.observaciones ? `<div style="font-size:.74rem;color:var(--text-muted)"><i class="fa-regular fa-note-sticky"></i> ${esc(v.observaciones)}</div>` : ''}
           <div class="fleet-stats">
             <div class="fleet-stat"><div class="fleet-stat-label">Km hoy</div><div class="fleet-stat-val">${fmtNum(Math.max(0, v.odometro - v.kmInicio))}</div></div>
             <div class="fleet-stat"><div class="fleet-stat-label">Odómetro</div><div class="fleet-stat-val">${fmtNum(v.odometro)}</div></div>
-            <div class="fleet-stat"><div class="fleet-stat-label">Desde service</div><div class="fleet-stat-val">${fmtNum(desde)}</div></div>
+            <div class="fleet-stat"><div class="fleet-stat-label">Año</div><div class="fleet-stat-val">${esc(String(v.anio || '—'))}</div></div>
           </div>
           <div>
-            <div class="meter-label">${textoService}<span>${Math.round(pct * 100)}%</span></div>
-            <div class="meter ${nivel}"><span style="width:${pct * 100}%"></span></div>
+            <div class="meter-label">${textoService}${tieneService ? `<span>${Math.round(pct * 100)}%</span>` : ''}</div>
+            ${tieneService ? `<div class="meter ${nivel}"><span style="width:${pct * 100}%"></span></div>` : ''}
           </div>
           <div class="fleet-actions">
             <button class="btn btn-secondary btn-xs" onclick="registrarKm(${i})"><i class="fa-solid fa-gauge-high"></i> Registrar km</button>
             <button class="btn btn-secondary btn-xs" onclick="editarVehiculo(${i})"><i class="fa-solid fa-pen"></i> Editar</button>
             <button class="btn btn-danger-soft btn-xs" onclick="eliminarVehiculo(${i})" title="Eliminar vehículo"><i class="fa-solid fa-trash"></i></button>
             <button class="btn btn-secondary btn-xs" onclick="toggleTaller(${i})"><i class="fa-solid fa-screwdriver-wrench"></i> ${v.taller ? 'Volver a operativo' : 'Enviar a taller'}</button>
-            ${resta <= 0 || nivel === 'warn' ? `<button class="btn btn-secondary btn-xs" onclick="registrarService(${i})"><i class="fa-solid fa-oil-can"></i> Service hecho</button>` : ''}
+            ${tieneService && (resta <= 0 || nivel === 'warn') ? `<button class="btn btn-secondary btn-xs" onclick="registrarService(${i})"><i class="fa-solid fa-oil-can"></i> Service hecho</button>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -3411,8 +3161,13 @@
           if (err) { errEl.textContent = err; return; }
           cerrar(vals);
         };
+        // El fondo solo cierra diálogos sin campos (confirmaciones) y únicamente si el
+        // clic empezó y terminó en el fondo: arrastrar para seleccionar texto de un
+        // input y soltar afuera ya no cierra ni pierde lo escrito.
+        let downEnFondo = false;
+        ov.addEventListener('mousedown', e => { downEnFondo = (e.target === ov); });
         ov.addEventListener('click', e => {
-          if (e.target === ov) { cerrar(null); return; }
+          if (e.target === ov) { if (downEnFondo && !campos.length) cerrar(null); downEnFondo = false; return; }
           const a = e.target.closest('[data-a]');
           if (!a) return;
           if (a.dataset.a === 'ok') aceptar(); else cerrar(null);
@@ -3457,9 +3212,9 @@
       return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
     }
     let USUARIOS = [{ id: 'u-admin', usuario: 'admin', nombre: 'Operador Despacho', rol: 'Administrador', clave: hashClave('admin') }];
-    let SESION = 'u-admin';
+    let SESION = null;
     const ROLES = ['Administrador', 'Operador'];
-    const userActual = () => USUARIOS.find(u => u.id === SESION) || USUARIOS.find(u => u.rol === 'Administrador') || USUARIOS[0];
+    const userActual = () => USUARIOS.find(u => u.id === SESION) || null;
     const esAdmin = () => { const u = userActual(); return !!u && u.rol === 'Administrador'; };
     const iniciales = n => String(n || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
@@ -3468,6 +3223,32 @@
       $('#userAvatar').textContent = iniciales(u.nombre);
       $('#userName').textContent = u.nombre;
       $('#userRole').textContent = u.rol;
+    }
+
+    function conectarLoginInicial() {
+      const form = document.getElementById('loginForm');
+      if (!form || form.dataset.conectado) return;
+      form.dataset.conectado = '1';
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const nombre = document.getElementById('loginUsername').value.trim();
+        const clave = document.getElementById('loginPassword').value;
+        const error = document.getElementById('loginError');
+        const u = USUARIOS.find(x => igual(x.usuario, nombre));
+        if (!u || !u.clave || u.clave !== hashClave(clave)) {
+          error.textContent = 'Usuario o contraseña incorrectos.';
+          document.getElementById('loginPassword').value = '';
+          document.getElementById('loginPassword').focus();
+          return;
+        }
+        SESION = u.id;
+        renderUsuarioHeader();
+        document.getElementById('loginGate').hidden = true;
+        document.getElementById('loginPassword').value = '';
+        error.textContent = '';
+        guardarEstado();
+        toast(`Sesión iniciada: ${u.nombre}`);
+      });
     }
 
     function abrirUsuarios() {
@@ -3495,7 +3276,7 @@
           </div>
         </div></div>`;
       ov.addEventListener('click', e => {
-        if (e.target === ov) { ov.remove(); return; }
+        if (e.target === ov) return; // se cierra solo con "Cerrar", la X o Escape
         const a = e.target.closest('[data-a]'); if (!a) return;
         const k = a.dataset.a;
         if (k === 'cerrar') ov.remove();
@@ -3628,7 +3409,7 @@
     // =====================================================================
     //  GUARDADO AUTOMÁTICO (para que lo editado no se pierda al recargar)
     // =====================================================================
-    const LS_KEY = 'monarca_estado_v2';
+    const LS_KEY = 'monarca_estado_v3';
 
     function snapshotTarjetas() {
       return $$('.driver-card').map(c => ({
@@ -3642,8 +3423,8 @@
       if (_NO_GUARDAR) return;
       try {
         const st = {
-          v: 2, franjas: FRANJAS, franjaActual: FRANJA_ACTUAL, flota: FLOTA, asistencia: ASISTENCIA, viajes: VIAJES,
-          orden: CHOFER_ORDEN, usuarios: USUARIOS, sesion: SESION, tarjetas: snapshotTarjetas(),
+          v: 2, fleetImportVersion: FLOTA_EXCEL_VERSION, franjas: FRANJAS, franjaActual: FRANJA_ACTUAL, flota: FLOTA, asistencia: ASISTENCIA, viajes: VIAJES,
+          orden: CHOFER_ORDEN, usuarios: USUARIOS, tarjetas: snapshotTarjetas(),
           pedidos: PEDIDOS.map(p => ({ id: p.id, franja: p.franja, chofer: p.chofer, estado: p.estado, motivo: p.motivo, intentos: p.intentos, cajas: p.cajas }))
         };
         localStorage.setItem(LS_KEY, JSON.stringify(st));
@@ -3723,7 +3504,9 @@
       st.tarjetas.forEach(d => frag.appendChild(crearTarjetaDOM(d)));
       const nuevos = {
         franjas: Array.isArray(st.franjas) && st.franjas.length ? st.franjas : FRANJAS,
-        flota: st.flota,
+        flota: st.fleetImportVersion === FLOTA_EXCEL_VERSION && Array.isArray(st.flota)
+          ? st.flota
+          : FLOTA_DESDE_EXCEL.map(v => ({ ...v })),
         asistencia: Array.isArray(st.asistencia) ? st.asistencia : ASISTENCIA,
         viajes: Array.isArray(st.viajes) ? st.viajes : VIAJES,
         orden: Array.isArray(st.orden) ? st.orden : CHOFER_ORDEN.slice(),
@@ -3732,7 +3515,8 @@
       FRANJAS = nuevos.franjas;
       FRANJA_ACTUAL = FRANJAS.includes(st.franjaActual) ? st.franjaActual : FRANJAS[0];
       FLOTA = nuevos.flota; ASISTENCIA = nuevos.asistencia; VIAJES = nuevos.viajes; USUARIOS = nuevos.usuarios;
-      SESION = st.sesion || SESION;
+      // No restaurar la sesión guardada: siempre pedir credenciales al abrir el archivo.
+      SESION = null;
       CHOFER_ORDEN.splice(0, CHOFER_ORDEN.length, ...nuevos.orden);
       const byId = new Map(PEDIDOS.map(p => [p.id, p]));
       (st.pedidos || []).forEach(o => { const p = byId.get(o.id); if (p) Object.assign(p, o); });
@@ -3840,7 +3624,7 @@
       return dlg({
         titulo,
         campos: [
-          { id: 'modelo', label: 'Modelo / vehículo', value: v.modelo, full: true, req: true },
+          { id: 'modelo', label: 'Año / descripción del vehículo', value: v.modelo, full: true, req: true },
           { id: 'patente', label: 'Patente', value: v.patente, req: true },
           { id: 'chofer', label: 'Chofer asignado', type: 'select', value: v.chofer || '',
             options: [{ v: '', t: '— Sin asignar —' }, ...choferes().map(c => ({ v: c, t: c }))] },
@@ -4039,11 +3823,13 @@
       try { restaurarEstado(); } catch (e) { console.error('No se pudo restaurar el estado guardado', e); }
       $$('.driver-card').forEach(c => { normalizarStepper(c); mejorarTarjeta(c); });
       sincronizarVehiculosTarjetas();
+      conectarLoginInicial();
       renderUsuarioHeader();
       renderHistorial();
       recalcKPIs();
       animateKPIs();
       refreshBadges();
+      guardarEstado();
       const inicial = (location.hash || '').slice(1);
       if (inicial && RENDER[inicial] && inicial !== 'logistica') showView(inicial);
     }
